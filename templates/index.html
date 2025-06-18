@@ -1,50 +1,20 @@
 <!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>水龙头自动领取</title>
-  <style>
-    body { font-family: Arial; padding: 20px; }
-    textarea { width: 100%; height: 100px; }
-    #output { white-space: pre-wrap; background: #f4f4f4; padding: 10px; border: 1px solid #ccc; margin-top: 20px; height: 300px; overflow-y: scroll; }
-  </style>
-</head>
-<body>
-  <h1>水龙头自动领取</h1>
-  <form onsubmit="start(event)">
-    <label>钱包地址 (每行一个):</label><br>
-    <textarea id="addresses"></textarea><br>
-    <label>Socks5代理 (每行一个):</label><br>
-    <textarea id="proxies"></textarea><br>
-    <label>YesCaptcha API Key:</label><br>
-    <input id="client_key" style="width: 100%;" /><br><br>
-    <button type="submit">开始领取</button>
-  </form>
-  <div id="output"></div>
-
-  <script>
-    function start(event) {
-      event.preventDefault();
-      const addrs = document.getElementById("addresses").value.trim();
-      const proxies = document.getElementById("proxies").value.trim();
-      const key = document.getElementById("client_key").value.trim();
-      if (!addrs || !proxies || !key) return alert("请填写所有字段");
-
-      const params = new URLSearchParams();
-      params.append("addresses", addrs);
-      params.append("proxies", proxies);
-      params.append("client_key", key);
-
-      const evtSource = new EventSource("/run?" + params.toString().replace(/\n/g, "%0A"));
-      const output = document.getElementById("output");
-      output.innerText = "开始领取...\n";
-
-      evtSource.onmessage = e => output.innerText += e.data + "\n";
-      evtSource.onerror = () => {
-        output.innerText += "\n❌ 流连接中断或出错。\n";
-        evtSource.close();
-      };
-    }
-  </script>
-</body>
-</html>
+<html><head><meta charset="utf-8"><title>自动领取</title></head><body>
+<h2>自动领取</h2>
+<textarea id="addr" placeholder="地址"></textarea><br>
+<textarea id="proxy" placeholder="ip:port:user:pass"></textarea><br>
+<input id="key" placeholder="YesCaptcha key"><button onclick="go()">Go</button>
+<pre id="log"></pre>
+<script>
+function go(){
+  const addr = document.getElementById("addr").value;
+  const proxy = document.getElementById("proxy").value;
+  const key = document.getElementById("key").value;
+  if(!addr||!proxy||!key)return alert("请填全");
+  const es = new EventSource(`/run?addresses=${encodeURIComponent(addr)}&proxies=${encodeURIComponent(proxy)}&client_key=${encodeURIComponent(key)}`);
+  const log = document.getElementById("log"); log.textContent = "";
+  es.onmessage = e=>log.textContent+=e.data+"\n";
+  es.onerror = ()=>{log.textContent+="\n❌ 断开\n"; es.close();}
+}
+</script>
+</body></html>
