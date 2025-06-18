@@ -2,40 +2,44 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>自动领水工具</title>
+  <title>批量领取</title>
   <style>
-    textarea, input { width: 100%; margin-top: 8px; }
-    button { margin-top: 10px; width: 100%; }
-    #log { white-space: pre-wrap; margin-top: 15px; border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: scroll; }
+    body { font-family: monospace; background: #111; color: #0f0; padding: 20px; }
+    textarea, input { width: 100%; margin-top: 10px; }
+    #output { white-space: pre-wrap; margin-top: 20px; }
   </style>
 </head>
 <body>
-  <h2>自动领取 CAMP 水龙头</h2>
-  <form onsubmit="start(event)">
-    <label>钱包地址（每行一个）</label>
-    <textarea id="addresses" rows="5"></textarea>
-    <label>Socks5代理（host:port:user:pass，每行一个）</label>
-    <textarea id="proxies" rows="5"></textarea>
-    <label>YesCaptcha client key</label>
-    <input id="client_key">
+  <h2>批量领取工具</h2>
+  <form id="mainForm">
+    <label>钱包地址（每行一个）:</label><br>
+    <textarea id="addresses" rows="5"></textarea><br>
+    <label>代理列表（ip:port:user:pass）:</label><br>
+    <textarea id="proxies" rows="5"></textarea><br>
+    <label>YesCaptcha API Key:</label><br>
+    <input id="clientKey"><br>
     <button type="submit">开始领取</button>
   </form>
-  <div id="log"></div>
-
+  <div id="output"></div>
   <script>
-    function start(e) {
+    document.getElementById("mainForm").onsubmit = function(e) {
       e.preventDefault();
-      const addr = document.getElementById('addresses').value;
-      const proxy = document.getElementById('proxies').value;
-      const key = document.getElementById('client_key').value;
-      const log = document.getElementById('log');
-      log.innerText = '';
+      const addresses = document.getElementById("addresses").value;
+      const proxies = document.getElementById("proxies").value;
+      const clientKey = document.getElementById("clientKey").value;
+      const output = document.getElementById("output");
+      output.textContent = "开始连接...\n";
 
-      const es = new EventSource(`/run?addresses=${encodeURIComponent(addr)}&proxies=${encodeURIComponent(proxy)}&client_key=${encodeURIComponent(key)}`);
-      es.onmessage = e => log.innerText += e.data + "\n";
-      es.onerror = e => {
-        log.innerText += "❌ 流连接中断或出错。\n";
-        es.close();
+      const params = new URLSearchParams({ addresses, proxies, client_key: clientKey });
+      const evtSource = new EventSource(`/run?${params.toString()}`);
+
+      evtSource.onmessage = function(e) {
+        output.textContent += e.data + "\n";
+      };
+
+      evtSource.onerror = function() {
+        output.textContent += "❌ 流连接中断或出错。\n";
+        evtSource.close();
       };
     }
   </script>
