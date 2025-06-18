@@ -1,136 +1,57 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>🪙 Faucet Automation</title>
+  <title>Faucet 自动领取</title>
+  <meta charset="utf-8">
   <style>
-    body {
-      background-color: #f2f4f8;
-      font-family: "Segoe UI", sans-serif;
-      padding: 20px;
-      color: #333;
-    }
-
-    h1 {
-      color: #444;
-      text-align: center;
-      margin-bottom: 30px;
-    }
-
-    form {
-      max-width: 800px;
-      margin: 0 auto;
-      background: white;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 8px 16px rgba(0,0,0,0.1);
-    }
-
-    textarea, input {
-      width: 100%;
-      padding: 10px;
-      margin: 10px 0 20px;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      font-size: 14px;
-      resize: vertical;
-    }
-
-    button {
-      background-color: #4CAF50;
-      color: white;
-      padding: 12px 20px;
-      font-size: 16px;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      width: 100%;
-    }
-
-    button:hover {
-      background-color: #45a049;
-    }
-
-    #output {
-      white-space: pre-wrap;
-      background: #111;
-      color: #0f0;
-      font-family: monospace;
-      padding: 20px;
-      margin-top: 30px;
-      border-radius: 8px;
-      max-width: 800px;
-      margin-left: auto;
-      margin-right: auto;
-    }
+    body { font-family: sans-serif; margin: 2rem; }
+    textarea, input { width: 100%; margin-bottom: 1rem; }
+    #result { white-space: pre-wrap; border: 1px solid #ccc; padding: 1rem; height: 300px; overflow-y: scroll; }
   </style>
 </head>
 <body>
-  <h1>🧪 Faucet Automation Panel</h1>
+  <h2>批量领水工具</h2>
+  <form id="claim-form">
+    <label>钱包地址（每行一个）</label>
+    <textarea name="addresses" rows="5"></textarea>
 
-  <form id="faucet-form">
-    <label for="addresses">地址 (一行一个):</label>
-    <textarea id="addresses" name="addresses" rows="6" required></textarea>
+    <label>代理列表（每行一个）</label>
+    <textarea name="proxies" rows="5"></textarea>
 
-    <label for="proxies">SOCKS5代理 (host:port:user:pass):</label>
-    <textarea id="proxies" name="proxies" rows="6" required></textarea>
+    <label>YesCaptcha Client Key</label>
+    <input type="text" name="client_key">
 
-    <label for="client_key">YesCaptcha Key:</label>
-    <input type="text" id="client_key" name="client_key" required />
-
-    <button type="submit">🚀 开始领取</button>
+    <button type="submit">开始领取</button>
   </form>
 
-  <div id="output"></div>
+  <h3>实时反馈：</h3>
+  <div id="result">等待开始...</div>
 
   <script>
-    document.getElementById('faucet-form').addEventListener('submit', function(e) {
+    document.getElementById('claim-form').addEventListener('submit', function(e) {
       e.preventDefault();
-      const addresses = document.getElementById('addresses').value;
-      const proxies = document.getElementById('proxies').value;
-      const client_key = document.getElementById('client_key').value;
 
-      const formData = new FormData();
-      formData.append('addresses', addresses);
-      formData.append('proxies', proxies);
-      formData.append('client_key', client_key);
+      const formData = new FormData(e.target);
+      const params = new URLSearchParams();
 
-      const output = document.getElementById('output');
-      output.textContent = "⏳ 正在开始任务...\n";
+      for (const [key, value] of formData.entries()) {
+        params.append(key, value);
+      }
 
-      fetch('/run', {
-        method: 'POST',
-        body: formData,
-      }).then(response => {
-        if (!response.ok) {
-          output.textContent = "❌ 请求失败，请检查参数";
-          return;
-        }
+      const resultDiv = document.getElementById('result');
+      resultDiv.textContent = '⏳ 正在领取...\n';
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder("utf-8");
+      const evtSource = new EventSource('/run?' + params.toString());
 
-        function read() {
-          reader.read().then(({ done, value }) => {
-            if (done) {
-              output.textContent += "\n✅ 所有任务完成。";
-              return;
-            }
-            const text = decoder.decode(value, { stream: true });
-            const lines = text.trim().split("\n").filter(line => line.startsWith("data:"));
-            lines.forEach(line => {
-              const msg = line.replace("data: ", "");
-              output.textContent += msg + "\n";
-            });
-            read();
-          });
-        }
+      evtSource.onmessage = function(e) {
+        resultDiv.textContent += e.data + '\n';
+        resultDiv.scrollTop = resultDiv.scrollHeight;
+      };
 
-        read();
-      }).catch(err => {
-        output.textContent = "❌ 网络错误：" + err;
-      });
+      evtSource.onerror = function() {
+        resultDiv.textContent += '\\n❌ 流连接中断或出错。\n';
+        evtSource.close();
+      };
     });
   </script>
 </body>
