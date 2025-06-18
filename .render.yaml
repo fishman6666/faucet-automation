@@ -3,4 +3,5 @@ services:
     name: faucet-automation
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --worker-class gevent --timeout 300
+    startCommand: gunicorn app:app --worker-class gevent --bind 0.0.0.0:$PORT
+    autoDeploy: true
