@@ -1,20 +1,43 @@
 <!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>自动领取</title></head><body>
-<h2>自动领取</h2>
-<textarea id="addr" placeholder="地址"></textarea><br>
-<textarea id="proxy" placeholder="ip:port:user:pass"></textarea><br>
-<input id="key" placeholder="YesCaptcha key"><button onclick="go()">Go</button>
-<pre id="log"></pre>
-<script>
-function go(){
-  const addr = document.getElementById("addr").value;
-  const proxy = document.getElementById("proxy").value;
-  const key = document.getElementById("key").value;
-  if(!addr||!proxy||!key)return alert("请填全");
-  const es = new EventSource(`/run?addresses=${encodeURIComponent(addr)}&proxies=${encodeURIComponent(proxy)}&client_key=${encodeURIComponent(key)}`);
-  const log = document.getElementById("log"); log.textContent = "";
-  es.onmessage = e=>log.textContent+=e.data+"\n";
-  es.onerror = ()=>{log.textContent+="\n❌ 断开\n"; es.close();}
-}
-</script>
-</body></html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>自动领水工具</title>
+  <style>
+    textarea, input { width: 100%; margin-top: 8px; }
+    button { margin-top: 10px; width: 100%; }
+    #log { white-space: pre-wrap; margin-top: 15px; border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: scroll; }
+  </style>
+</head>
+<body>
+  <h2>自动领取 CAMP 水龙头</h2>
+  <form onsubmit="start(event)">
+    <label>钱包地址（每行一个）</label>
+    <textarea id="addresses" rows="5"></textarea>
+    <label>Socks5代理（host:port:user:pass，每行一个）</label>
+    <textarea id="proxies" rows="5"></textarea>
+    <label>YesCaptcha client key</label>
+    <input id="client_key">
+    <button type="submit">开始领取</button>
+  </form>
+  <div id="log"></div>
+
+  <script>
+    function start(e) {
+      e.preventDefault();
+      const addr = document.getElementById('addresses').value;
+      const proxy = document.getElementById('proxies').value;
+      const key = document.getElementById('client_key').value;
+      const log = document.getElementById('log');
+      log.innerText = '';
+
+      const es = new EventSource(`/run?addresses=${encodeURIComponent(addr)}&proxies=${encodeURIComponent(proxy)}&client_key=${encodeURIComponent(key)}`);
+      es.onmessage = e => log.innerText += e.data + "\n";
+      es.onerror = e => {
+        log.innerText += "❌ 流连接中断或出错。\n";
+        es.close();
+      };
+    }
+  </script>
+</body>
+</html>
