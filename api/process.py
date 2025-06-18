@@ -1,9 +1,10 @@
-import requests
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from openpyxl import Workbook
-import base64
 import json
+import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from openpyxl import Workbook
+
+from flask import Request, jsonify
 
 def parse_proxy_line(proxy_line):
     parts = proxy_line.strip().split(":")
@@ -14,7 +15,7 @@ def parse_proxy_line(proxy_line):
     return None
 
 def create_yescaptcha_task(client_key, website_url, website_key, user_agent, proxies=None):
-    url = "https://api.yescaptcha.com/createTask"
+    import requests
     payload = {
         "clientKey": client_key,
         "task": {
@@ -25,37 +26,32 @@ def create_yescaptcha_task(client_key, website_url, website_key, user_agent, pro
         }
     }
     try:
-        resp = requests.post(url, json=payload, proxies=proxies, timeout=60)
+        resp = requests.post("https://api.yescaptcha.com/createTask", json=payload, proxies=proxies, timeout=60)
         data = resp.json()
         return data.get("taskId"), data
     except Exception as e:
-        return None, f"代理请求异常: {e}"
+        return None, f"创建打码任务失败: {e}"
 
 def get_yescaptcha_result(client_key, task_id, proxies=None, timeout=120):
+    import time, requests
     url = "https://api.yescaptcha.com/getTaskResult"
-    payload = {
-        "clientKey": client_key,
-        "taskId": task_id
-    }
+    payload = {"clientKey": client_key, "taskId": task_id}
     start_time = time.time()
-    try:
-        while True:
-            try:
-                resp = requests.post(url, json=payload, proxies=proxies, timeout=60).json()
-            except Exception as e:
-                return None, f"代理请求异常: {e}"
+    while True:
+        try:
+            resp = requests.post(url, json=payload, proxies=proxies, timeout=60).json()
             if resp.get("errorId") != 0:
                 return None, resp.get("errorDescription")
             if resp.get("status") == "ready":
-                solution = resp["solution"]
-                return solution["gRecaptchaResponse"], None
-            if time.time() - start_time > timeout:
-                return None, "识别超时"
-            time.sleep(3)
-    except Exception as e:
-        return None, f"代理请求异常: {e}"
+                return resp["solution"]["gRecaptchaResponse"], None
+        except Exception as e:
+            return None, f"获取打码结果失败: {e}"
+        if time.time() - start_time > timeout:
+            return None, "识别超时"
+        time.sleep(3)
 
 def claim_water(address, hcaptcha_response, user_agent, proxies=None):
+    import requests
     url = "https://faucet-go-production.up.railway.app/api/claim"
     headers = {
         "h-captcha-response": hcaptcha_response,
@@ -67,55 +63,42 @@ def claim_water(address, hcaptcha_response, user_agent, proxies=None):
         resp = requests.post(url, json=payload, headers=headers, proxies=proxies, timeout=60)
         return resp.text
     except Exception as e:
-        return f"请求异常: {e}"
-
-def handler(request):
-    body = request.get_json()
-    addresses = body.get("addresses", [])
-    proxies_list = body.get("proxies", [])
-    client_key = body.get("client_key")
-    website_url = "https://faucet.campnetwork.xyz/"
-    website_key = "5b86452e-488a-4f62-bd32-a332445e2f51"
-    user_agent = body.get("user_agent", "Mozilla/5.0")
-
-    results = []
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        future_to_index = {
-            executor.submit(process_one, idx, addr, proxies_list[idx], client_key, website_url, website_key, user_agent): idx
-            for idx, addr in enumerate(addresses)
-        }
-        for future in as_completed(future_to_index):
-            res = future.result()
-            results.append(res)
-
-    # 生成 Excel 到内存
-    wb = Workbook()
-    ws = wb.active
-    ws.append(["序号", "地址", "代理", "状态", "返回内容"])
-    for row in sorted(results, key=lambda x: x[0]):
-        ws.append(row)
-
-    from io import BytesIO
-    output = BytesIO()
-    wb.save(output)
-    excel_data = output.getvalue()
-    output.close()
-
-    encoded_excel = base64.b64encode(excel_data).decode()
-    return {
-        "statusCode": 200,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({"file": encoded_excel})
-    }
+        return f"领水请求失败: {e}"
 
 def process_one(index, address, proxy_line, client_key, website_url, website_key, user_agent):
     proxies = parse_proxy_line(proxy_line)
     task_id, create_resp = create_yescaptcha_task(client_key, website_url, website_key, user_agent, proxies=proxies)
     if not task_id:
-        return (index, address, proxy_line, "打码任务创建失败", str(create_resp))
+        return {"index": index, "address": address, "proxy": proxy_line, "status": "❌ 创建任务失败", "info": str(create_resp)}
     hcaptcha_response, err = get_yescaptcha_result(client_key, task_id, proxies=proxies)
     if not hcaptcha_response:
-        return (index, address, proxy_line, "打码失败", str(err))
-    claim_result = claim_water(address, hcaptcha_response, user_agent, proxies=proxies)
-    return (index, address, proxy_line, "成功", claim_result)
+        return {"index": index, "address": address, "proxy": proxy_line, "status": "❌ 打码失败", "info": str(err)}
+    result = claim_water(address, hcaptcha_response, user_agent, proxies=proxies)
+    return {"index": index, "address": address, "proxy": proxy_line, "status": "✅ 成功", "info": result}
 
+def handler(request: Request):
+    body = request.get_json()
+    addresses = body.get("addresses", [])
+    proxies = body.get("proxies", [])
+    client_key = body.get("client_key", "")
+
+    if not (addresses and proxies and client_key):
+        return jsonify({"error": "参数缺失"})
+
+    if len(addresses) != len(proxies):
+        return jsonify({"error": "地址和代理数量不一致"})
+
+    website_url = "https://faucet.campnetwork.xyz/"
+    website_key = "5b86452e-488a-4f62-bd32-a332445e2f51"
+    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+
+    results = []
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        futures = [
+            executor.submit(process_one, idx, addr, proxies[idx], client_key, website_url, website_key, user_agent)
+            for idx, addr in enumerate(addresses)
+        ]
+        for future in as_completed(futures):
+            results.append(future.result())
+
+    return jsonify({"results": sorted(results, key=lambda x: x["index"])})
