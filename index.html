@@ -1,0 +1,53 @@
+<script>
+  async function submit() {
+    const addressesFile = document.getElementById("addressesFile").files[0];
+    const proxiesFile = document.getElementById("proxiesFile").files[0];
+    const clientKey = document.getElementById("clientKey").value;
+
+    if (!addressesFile || !proxiesFile || !clientKey) {
+      alert("请填写所有内容");
+      return;
+    }
+
+    const readFile = file => new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.trim().split('\n'));
+      reader.readAsText(file);
+    });
+
+    const addresses = await readFile(addressesFile);
+    const proxies = await readFile(proxiesFile);
+
+    document.getElementById("status").innerText = "处理中，请稍候...";
+    document.getElementById("results").innerHTML = "";
+
+    const res = await fetch("/api/process.py", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ addresses, proxies, client_key: clientKey })
+    });
+
+    const data = await res.json();
+
+    if (data.error) {
+      document.getElementById("status").innerText = "❌ 错误：" + data.error;
+      return;
+    }
+
+    document.getElementById("status").innerText = "处理完成 ✅";
+
+    let html = "<table border='1'><tr><th>序号</th><th>地址</th><th>代理</th><th>状态</th><th>返回</th></tr>";
+    data.results.forEach(row => {
+      html += `<tr>
+        <td>${row.index}</td>
+        <td>${row.address}</td>
+        <td>${row.proxy}</td>
+        <td>${row.status}</td>
+        <td>${row.info}</td>
+      </tr>`;
+    });
+    html += "</table>";
+    document.getElementById("results").innerHTML = html;
+  }
+</script>
+<div id="results"></div>
