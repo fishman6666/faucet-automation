@@ -2,125 +2,103 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
-  <title>💧 Faucet Automation Tool</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Faucet Automation</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body {
-      font-family: "Segoe UI", Roboto, sans-serif;
-      background: #f4f6f8;
+      font-family: 'Segoe UI', sans-serif;
+      background: #f4f4f4;
       margin: 0;
       padding: 0;
     }
-
     .container {
       max-width: 800px;
       margin: 40px auto;
-      background: #ffffff;
+      background: white;
       padding: 30px;
       border-radius: 12px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
-
-    h1 {
+    h2 {
+      margin-top: 0;
       text-align: center;
-      color: #333;
-      margin-bottom: 20px;
     }
-
-    label {
-      font-weight: bold;
-      margin-top: 15px;
-      display: block;
-      color: #333;
-    }
-
     textarea, input[type="text"] {
       width: 100%;
-      padding: 12px;
-      margin-top: 6px;
+      padding: 10px;
+      margin: 10px 0 20px;
       border: 1px solid #ccc;
-      border-radius: 8px;
-      resize: vertical;
-      box-sizing: border-box;
-      font-size: 14px;
+      border-radius: 6px;
+      font-family: monospace;
     }
-
     button {
-      background: #007bff;
+      background-color: #28a745;
       color: white;
-      padding: 12px 24px;
+      padding: 12px 20px;
       border: none;
-      border-radius: 8px;
+      border-radius: 6px;
       cursor: pointer;
       font-size: 16px;
-      margin-top: 20px;
     }
-
     button:hover {
-      background: #0056b3;
+      background-color: #218838;
     }
-
-    .results {
-      margin-top: 30px;
-      padding: 15px;
+    #results {
+      white-space: pre-line;
       background: #f9f9f9;
-      border-radius: 10px;
-      font-family: monospace;
-      white-space: pre-wrap;
-    }
-
-    .loading {
-      margin-top: 20px;
-      font-style: italic;
-      color: #888;
+      padding: 15px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      height: 300px;
+      overflow-y: scroll;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>💧 Faucet Automation</h1>
+    <h2>🛠 Faucet 自动领水工具</h2>
     <form id="faucet-form">
-      <label for="client_key">🔑 YesCaptcha API Key:</label>
-      <input type="text" id="client_key" name="client_key" required>
+      <label>钱包地址（一行一个）:</label>
+      <textarea name="addresses" rows="5" placeholder="0x123..."></textarea>
 
-      <label for="addresses">📬 钱包地址 (一行一个):</label>
-      <textarea id="addresses" name="addresses" rows="6" required></textarea>
+      <label>代理列表（一行一个，对应地址）:</label>
+      <textarea name="proxies" rows="5" placeholder="ip:port:user:pass"></textarea>
 
-      <label for="proxies">🌐 代理列表 (user:pass@host:port):</label>
-      <textarea id="proxies" name="proxies" rows="6" required></textarea>
+      <label>YesCaptcha API Key:</label>
+      <input type="text" name="client_key" placeholder="Your YesCaptcha key">
 
-      <button type="submit">开始领取 🚀</button>
+      <button type="submit">🚀 开始领取</button>
     </form>
 
-    <div class="loading" id="loading" style="display:none;">⏳ 正在领取中，请稍候...</div>
-    <div class="results" id="results"></div>
+    <h3>实时反馈结果：</h3>
+    <div id="results"></div>
   </div>
 
   <script>
-    const form = document.getElementById("faucet-form");
-    const loading = document.getElementById("loading");
-    const results = document.getElementById("results");
+    const form = document.getElementById('faucet-form');
+    const resultsDiv = document.getElementById('results');
 
-    form.addEventListener("submit", async (e) => {
+    form.addEventListener('submit', function(e) {
       e.preventDefault();
-      loading.style.display = "block";
-      results.innerText = "";
+      resultsDiv.textContent = "⏳ 正在处理...\n";
 
       const formData = new FormData(form);
-      const payload = new URLSearchParams(formData);
-
-      try {
-        const response = await fetch("/run", {
-          method: "POST",
-          body: payload,
-        });
-        const text = await response.text();
-        results.innerText = text;
-      } catch (err) {
-        results.innerText = "❌ 请求失败：" + err;
-      } finally {
-        loading.style.display = "none";
+      const params = new URLSearchParams();
+      for (const pair of formData.entries()) {
+        params.append(pair[0], pair[1]);
       }
+
+      const evtSource = new EventSource('/run_stream?' + params.toString());
+
+      evtSource.onmessage = function(event) {
+        resultsDiv.textContent += event.data + "\n";
+        resultsDiv.scrollTop = resultsDiv.scrollHeight;
+      };
+
+      evtSource.onerror = function() {
+        resultsDiv.textContent += "\n❌ 流连接中断或出错。\n";
+        evtSource.close();
+      };
     });
   </script>
 </body>
