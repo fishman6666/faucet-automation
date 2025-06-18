@@ -1,21 +1,127 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh">
 <head>
-    <title>Faucet Automation</title>
+  <meta charset="UTF-8">
+  <title>💧 Faucet Automation Tool</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: "Segoe UI", Roboto, sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 0;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 40px auto;
+      background: #ffffff;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      text-align: center;
+      color: #333;
+      margin-bottom: 20px;
+    }
+
+    label {
+      font-weight: bold;
+      margin-top: 15px;
+      display: block;
+      color: #333;
+    }
+
+    textarea, input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      margin-top: 6px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      resize: vertical;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+
+    button {
+      background: #007bff;
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-top: 20px;
+    }
+
+    button:hover {
+      background: #0056b3;
+    }
+
+    .results {
+      margin-top: 30px;
+      padding: 15px;
+      background: #f9f9f9;
+      border-radius: 10px;
+      font-family: monospace;
+      white-space: pre-wrap;
+    }
+
+    .loading {
+      margin-top: 20px;
+      font-style: italic;
+      color: #888;
+    }
+  </style>
 </head>
 <body>
-    <h2>🚀 Faucet Automation</h2>
-    <form action="/run" method="post">
-        <label>📬 钱包地址（换行分隔）:</label><br>
-        <textarea name="addresses" rows="5" cols="60" required></textarea><br><br>
+  <div class="container">
+    <h1>💧 Faucet Automation</h1>
+    <form id="faucet-form">
+      <label for="client_key">🔑 YesCaptcha API Key:</label>
+      <input type="text" id="client_key" name="client_key" required>
 
-        <label>🌍 代理列表（IP:PORT:USER:PASS，一行一个）:</label><br>
-        <textarea name="proxies" rows="5" cols="60" required></textarea><br><br>
+      <label for="addresses">📬 钱包地址 (一行一个):</label>
+      <textarea id="addresses" name="addresses" rows="6" required></textarea>
 
-        <label>🔑 YesCaptcha API Key:</label><br>
-        <input type="text" name="client_key" size="60" required><br><br>
+      <label for="proxies">🌐 代理列表 (user:pass@host:port):</label>
+      <textarea id="proxies" name="proxies" rows="6" required></textarea>
 
-        <button type="submit">开始领取</button>
+      <button type="submit">开始领取 🚀</button>
     </form>
+
+    <div class="loading" id="loading" style="display:none;">⏳ 正在领取中，请稍候...</div>
+    <div class="results" id="results"></div>
+  </div>
+
+  <script>
+    const form = document.getElementById("faucet-form");
+    const loading = document.getElementById("loading");
+    const results = document.getElementById("results");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      loading.style.display = "block";
+      results.innerText = "";
+
+      const formData = new FormData(form);
+      const payload = new URLSearchParams(formData);
+
+      try {
+        const response = await fetch("/run", {
+          method: "POST",
+          body: payload,
+        });
+        const text = await response.text();
+        results.innerText = text;
+      } catch (err) {
+        results.innerText = "❌ 请求失败：" + err;
+      } finally {
+        loading.style.display = "none";
+      }
+    });
+  </script>
 </body>
 </html>
