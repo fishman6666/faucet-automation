@@ -1,43 +1,21 @@
 <!DOCTYPE html>
-<html lang="zh">
-<head>
-  <meta charset="UTF-8" />
-  <title>自动领取水</title>
-</head>
-<body>
-  <form id="form">
-    <textarea name="addresses" placeholder="钱包地址，一行一个" rows="5"></textarea><br>
-    <textarea name="proxies" placeholder="代理，一行一个" rows="5"></textarea><br>
-    <input name="client_key" placeholder="YesCaptcha client key" /><br>
-    <button type="submit">开始领取</button>
-  </form>
-  <pre id="log"></pre>
-
-  <script>
-    const form = document.getElementById("form");
-    const log = document.getElementById("log");
-
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      log.textContent = "开始连接服务器...\n";
-
-      const formData = new FormData(form);
-      const params = new URLSearchParams();
-      for (const [key, value] of formData.entries()) {
-        params.append(key, value);
-      }
-
-      const eventSource = new EventSource("/run?" + params.toString());
-
-      eventSource.onmessage = (event) => {
-        log.textContent += event.data + "\n";
-      };
-
-      eventSource.onerror = () => {
-        log.textContent += "\n❌ 流连接中断或出错。\n";
-        eventSource.close();
-      };
-    });
-  </script>
-</body>
-</html>
+<html lang="zh"><head><meta charset="UTF-8"><title>Faucet</title></head><body>
+<h2>SSE 实时领取</h2>
+<form id="f">
+  <textarea name="addresses" placeholder="地址，一行一个" rows="4"></textarea><br>
+  <textarea name="proxies" placeholder="host:port:user:pass 一行一个" rows="4"></textarea><br>
+  <input name="client_key" placeholder="YesCaptcha Key"><br>
+  <button>开始</button>
+</form>
+<pre id="log">等待提交...</pre>
+<script>
+const f = document.getElementById('f'), log = document.getElementById('log');
+f.addEventListener('submit', e => {
+  e.preventDefault(); log.textContent = "链接中...\n";
+  const qs = new URLSearchParams(new FormData(f)).toString();
+  const es = new EventSource('/run?' + qs);
+  es.onmessage = ev => { log.textContent += ev.data + "\n"; };
+  es.onerror = _=>{ log.textContent += "\n❌ 中断\n"; es.close(); };
+});
+</script>
+</body></html>
