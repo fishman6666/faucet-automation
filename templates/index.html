@@ -1,102 +1,55 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>Faucet Automation</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Faucet 自动领取</title>
+  <meta charset="utf-8">
   <style>
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      background: #f4f4f4;
-      margin: 0;
-      padding: 0;
-    }
-    .container {
-      max-width: 800px;
-      margin: 40px auto;
-      background: white;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-    h2 {
-      margin-top: 0;
-      text-align: center;
-    }
-    textarea, input[type="text"] {
-      width: 100%;
-      padding: 10px;
-      margin: 10px 0 20px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      font-family: monospace;
-    }
-    button {
-      background-color: #28a745;
-      color: white;
-      padding: 12px 20px;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 16px;
-    }
-    button:hover {
-      background-color: #218838;
-    }
-    #results {
-      white-space: pre-line;
-      background: #f9f9f9;
-      padding: 15px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      height: 300px;
-      overflow-y: scroll;
-    }
+    body { font-family: sans-serif; margin: 2rem; }
+    textarea, input { width: 100%; margin-bottom: 1rem; }
+    #result { white-space: pre-wrap; border: 1px solid #ccc; padding: 1rem; height: 300px; overflow-y: scroll; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h2>🛠 Faucet 自动领水工具</h2>
-    <form id="faucet-form">
-      <label>钱包地址（一行一个）:</label>
-      <textarea name="addresses" rows="5" placeholder="0x123..."></textarea>
+  <h2>批量领水工具</h2>
+  <form id="claim-form">
+    <label>钱包地址（每行一个）</label>
+    <textarea name="addresses" rows="5"></textarea>
 
-      <label>代理列表（一行一个，对应地址）:</label>
-      <textarea name="proxies" rows="5" placeholder="ip:port:user:pass"></textarea>
+    <label>代理列表（每行一个）</label>
+    <textarea name="proxies" rows="5"></textarea>
 
-      <label>YesCaptcha API Key:</label>
-      <input type="text" name="client_key" placeholder="Your YesCaptcha key">
+    <label>YesCaptcha Client Key</label>
+    <input type="text" name="client_key">
 
-      <button type="submit">🚀 开始领取</button>
-    </form>
+    <button type="submit">开始领取</button>
+  </form>
 
-    <h3>实时反馈结果：</h3>
-    <div id="results"></div>
-  </div>
+  <h3>实时反馈：</h3>
+  <div id="result">等待开始...</div>
 
   <script>
-    const form = document.getElementById('faucet-form');
-    const resultsDiv = document.getElementById('results');
-
-    form.addEventListener('submit', function(e) {
+    document.getElementById('claim-form').addEventListener('submit', function(e) {
       e.preventDefault();
-      resultsDiv.textContent = "⏳ 正在处理...\n";
 
-      const formData = new FormData(form);
+      const formData = new FormData(e.target);
       const params = new URLSearchParams();
-      for (const pair of formData.entries()) {
-        params.append(pair[0], pair[1]);
+
+      for (const [key, value] of formData.entries()) {
+        params.append(key, value);
       }
 
-      const evtSource = new EventSource('/run_stream?' + params.toString());
+      const resultDiv = document.getElementById('result');
+      resultDiv.textContent = '⏳ 正在领取...\n';
 
-      evtSource.onmessage = function(event) {
-        resultsDiv.textContent += event.data + "\n";
-        resultsDiv.scrollTop = resultsDiv.scrollHeight;
+      const evtSource = new EventSource('/run?' + params.toString());
+
+      evtSource.onmessage = function(e) {
+        resultDiv.textContent += e.data + '\n';
+        resultDiv.scrollTop = resultDiv.scrollHeight;
       };
 
       evtSource.onerror = function() {
-        resultsDiv.textContent += "\n❌ 流连接中断或出错。\n";
+        resultDiv.textContent += '\\n❌ 流连接中断或出错。\n';
         evtSource.close();
       };
     });
