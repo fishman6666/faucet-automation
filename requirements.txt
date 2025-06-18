@@ -1,4 +1,4 @@
-Flask
-httpx[socks]
+flask
 gunicorn
-gevent
+httpx[socks]
+httpx-socks
