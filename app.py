@@ -1,4 +1,3 @@
-# app.py
 from flask import Flask, request, render_template, Response
 from concurrent.futures import ThreadPoolExecutor
 import time
@@ -31,14 +30,12 @@ def run():
 
     return Response(event_stream(), mimetype='text/event-stream')
 
-
 def parse_proxy_line(proxy_line):
     parts = proxy_line.strip().split(":")
     if len(parts) == 4:
         host, port, user, pwd = parts
         return f"socks5://{user}:{pwd}@{host}:{port}"
     return None
-
 
 def create_yescaptcha_task(client_key, user_agent):
     payload = {
@@ -57,7 +54,6 @@ def create_yescaptcha_task(client_key, user_agent):
     except Exception as e:
         return None, {"error": str(e)}
 
-
 def get_yescaptcha_result(client_key, task_id, timeout=120):
     start = time.time()
     while time.time() - start < timeout:
@@ -71,9 +67,8 @@ def get_yescaptcha_result(client_key, task_id, timeout=120):
         time.sleep(3)
     return None, "打码超时"
 
-
 def claim_water(address, hcaptcha_response, user_agent, proxy_url):
-    url = "https://faucet-go-production.up.railway.app/api/claim"
+    url = "https://faucet.campnetwork.xyz/api/claim"
     headers = {
         "h-captcha-response": hcaptcha_response,
         "user-agent": user_agent,
@@ -83,10 +78,9 @@ def claim_water(address, hcaptcha_response, user_agent, proxy_url):
     try:
         with httpx.Client(proxies=proxy_url, timeout=60) as client:
             resp = client.post(url, headers=headers, json=payload)
-            return resp.text
+            return resp.text  # 返回原始网站反馈
     except Exception as e:
         return f"请求失败: {e}"
-
 
 def process_one(i, address, proxy_line, client_key):
     proxy_url = parse_proxy_line(proxy_line)
@@ -106,4 +100,4 @@ def process_one(i, address, proxy_line, client_key):
     return yield_msg + f"✅ [{i+1}] {address} 完成领取\n{result}\n"
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000, debug=True)
+    app.run(host='0.0.0.0', port=10000)
