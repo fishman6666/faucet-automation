@@ -1,3 +1,4 @@
 Flask
 httpx[socks]
 gunicorn
+gevent
