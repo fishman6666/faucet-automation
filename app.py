@@ -1,40 +1,39 @@
-from flask import Flask, Response, render_template, request, stream_with_context
-import httpx, time
+from flask import Flask, render_template, request, Response, stream_with_context
 from concurrent.futures import ThreadPoolExecutor
+import httpx, time
 
 app = Flask(__name__)
 
-@app.route("/")
+@app.route('/')
 def index():
     return render_template("index.html")
 
-@app.route("/run")
+@app.route('/run')
 def run():
-    addresses = request.args.get("addresses", "").strip().splitlines()
-    proxies = request.args.get("proxies", "").strip().splitlines()
-    client_key = request.args.get("client_key", "").strip()
+    addrs = request.args.get('addresses','').strip().splitlines()
+    proxies = request.args.get('proxies','').strip().splitlines()
+    key = request.args.get('client_key','').strip()
 
-    if not (addresses and proxies and client_key):
-        yield f"data: ❌ 参数缺失\n\n"
-        return
+    if not (addrs and proxies and key) or len(addrs)!=len(proxies):
+        return Response("❌ 参数错误", status=400)
 
-    if len(addresses) != len(proxies):
-        yield f"data: ❌ 地址和代理数量不一致\n\n"
-        return
-
-    @stream_with_context
     def event_stream():
-        def process_one(i, address, proxy_line):
-            try:
-                yield f"data: ⏳ 正在处理 {address}...\n\n"
-                # 模拟领水过程（你可以用你的真实逻辑）
-                time.sleep(1)
-                yield f"data: ✅ {i+1}. {address} 领取成功\n\n"
-            except Exception as e:
-                yield f"data: ❌ {i+1}. {address} 失败: {str(e)}\n\n"
+        def task(i, addr, proxy_line):
+            proxy = f"socks5://{proxy_line.split(':')[2]}:{proxy_line.split(':')[3]}@{proxy_line.split(':')[0]}:{proxy_line.split(':')[1]}"
+            yield f"data: 🕐 [{i+1}] 使用代理 {proxy}\n\n"
+            time.sleep(1)  # 示例延时
+            yield f"data: ✅ [{i+1}] {addr} 完成领取\n\n"
 
-        for i, (addr, proxy) in enumerate(zip(addresses, proxies)):
-            yield from process_one(i, addr, proxy)
-        yield "data: ✅ 全部完成\n\n"
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(task, i, addrs[i], proxies[i]) for i in range(len(addrs))]
+            for f in futures:
+                for line in f.result():
+                    yield line
+                time.sleep(0.1)
 
-    return Response(event_stream(), content_type='text/event-stream')
+        yield "data: 🎉 全部完成\n\n"
+
+    return Response(stream_with_context(event_stream()), mimetype='text/event-stream')
+
+if __name__ == "__main__":
+    app.run(debug=True)
