@@ -1,4 +1,4 @@
 flask
-gunicorn
 httpx[socks]
-requests
+gunicorn
+gevent
