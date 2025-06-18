@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import requests, time
+import requests
+import time
 
 app = Flask(__name__)
 
@@ -46,7 +47,7 @@ def run():
             data = resp.json()
             return data.get("taskId"), data
         except Exception as e:
-            return None, str(e)
+            return None, f"创建打码任务失败: {e}"
 
     def get_yescaptcha_result(client_key, task_id, proxies=None, timeout=120):
         payload = {"clientKey": client_key, "taskId": task_id}
@@ -54,10 +55,12 @@ def run():
         while True:
             try:
                 resp = requests.post("https://api.yescaptcha.com/getTaskResult", json=payload, proxies=proxies, timeout=60).json()
+                if resp.get("errorId") != 0:
+                    return None, resp.get("errorDescription")
                 if resp.get("status") == "ready":
                     return resp["solution"]["gRecaptchaResponse"], None
             except Exception as e:
-                return None, str(e)
+                return None, f"获取打码结果失败: {e}"
             if time.time() - start_time > timeout:
                 return None, "识别超时"
             time.sleep(3)
@@ -74,7 +77,7 @@ def run():
             resp = requests.post(url, json=payload, headers=headers, proxies=proxies, timeout=60)
             return resp.text
         except Exception as e:
-            return str(e)
+            return f"领水请求失败: {e}"
 
     def process_one(index, address, proxy_line):
         proxies = parse_proxy_line(proxy_line)
