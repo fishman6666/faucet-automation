@@ -1,6 +1,10 @@
 services:
   - type: web
-    name: faucet-auto
+    name: faucet-automation
     env: python
+    plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --worker-class gevent --timeout 3600
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11
