@@ -1,93 +1,47 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html>
 <head>
   <meta charset="UTF-8">
-  <title>Camp Network 自动领水</title>
+  <title>水龙头自动领取</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
-      background-color: #f0f2f5;
-    }
-    h1 {
-      color: #333;
-    }
-    textarea, input {
-      width: 100%;
-      padding: 10px;
-      margin-top: 5px;
-      margin-bottom: 15px;
-      border-radius: 5px;
-      border: 1px solid #ccc;
-    }
-    button {
-      padding: 10px 20px;
-      background-color: #28a745;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    button:hover {
-      background-color: #218838;
-    }
-    #output {
-      white-space: pre-wrap;
-      background: #fff;
-      padding: 15px;
-      border: 1px solid #ddd;
-      border-radius: 5px;
-      max-height: 500px;
-      overflow-y: auto;
-    }
+    body { font-family: Arial; padding: 20px; }
+    textarea { width: 100%; height: 100px; }
+    #output { white-space: pre-wrap; background: #f4f4f4; padding: 10px; border: 1px solid #ccc; margin-top: 20px; height: 300px; overflow-y: scroll; }
   </style>
 </head>
 <body>
-  <h1>Camp Faucet 批量自动领取工具</h1>
-
-  <label>钱包地址（每行一个）</label>
-  <textarea id="addresses" rows="6" placeholder="0x123..."></textarea>
-
-  <label>Socks5 代理列表（每行一个，如 IP:端口:用户名:密码）</label>
-  <textarea id="proxies" rows="6" placeholder="ip:port:user:pass"></textarea>
-
-  <label>YesCaptcha Client Key</label>
-  <input id="client_key" type="text" placeholder="你的 YesCaptcha Key">
-
-  <button onclick="start()">开始领取</button>
-
-  <h2>输出结果：</h2>
-  <div id="output">等待开始...</div>
+  <h1>水龙头自动领取</h1>
+  <form onsubmit="start(event)">
+    <label>钱包地址 (每行一个):</label><br>
+    <textarea id="addresses"></textarea><br>
+    <label>Socks5代理 (每行一个):</label><br>
+    <textarea id="proxies"></textarea><br>
+    <label>YesCaptcha API Key:</label><br>
+    <input id="client_key" style="width: 100%;" /><br><br>
+    <button type="submit">开始领取</button>
+  </form>
+  <div id="output"></div>
 
   <script>
-    function start() {
-      const addresses = document.getElementById("addresses").value.trim();
+    function start(event) {
+      event.preventDefault();
+      const addrs = document.getElementById("addresses").value.trim();
       const proxies = document.getElementById("proxies").value.trim();
-      const clientKey = document.getElementById("client_key").value.trim();
+      const key = document.getElementById("client_key").value.trim();
+      if (!addrs || !proxies || !key) return alert("请填写所有字段");
 
-      if (!addresses || !proxies || !clientKey) {
-        alert("请填写所有字段！");
-        return;
-      }
+      const params = new URLSearchParams();
+      params.append("addresses", addrs);
+      params.append("proxies", proxies);
+      params.append("client_key", key);
 
-      const params = new URLSearchParams({
-        addresses: addresses,
-        proxies: proxies,
-        client_key: clientKey
-      });
-
+      const evtSource = new EventSource("/run?" + params.toString().replace(/\n/g, "%0A"));
       const output = document.getElementById("output");
-      output.textContent = "⏳ 正在领取中...\n";
+      output.innerText = "开始领取...\n";
 
-      const evtSource = new EventSource("/run?" + params.toString());
-
-      evtSource.onmessage = function (event) {
-        output.textContent += event.data + "\n";
-        output.scrollTop = output.scrollHeight;
-      };
-
-      evtSource.onerror = function () {
-        output.textContent += "\n❌ 流连接中断或出错。\n";
+      evtSource.onmessage = e => output.innerText += e.data + "\n";
+      evtSource.onerror = () => {
+        output.innerText += "\n❌ 流连接中断或出错。\n";
         evtSource.close();
       };
     }
