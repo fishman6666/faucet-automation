@@ -4,7 +4,18 @@
     <title>Faucet Automation</title>
 </head>
 <body>
-    <h1>✅ Hello from Flask Template!</h1>
+    <h2>🚀 Faucet Automation</h2>
+    <form action="/run" method="post">
+        <label>📬 钱包地址（换行分隔）:</label><br>
+        <textarea name="addresses" rows="5" cols="60" required></textarea><br><br>
+
+        <label>🌍 代理列表（IP:PORT:USER:PASS，一行一个）:</label><br>
+        <textarea name="proxies" rows="5" cols="60" required></textarea><br><br>
+
+        <label>🔑 YesCaptcha API Key:</label><br>
+        <input type="text" name="client_key" size="60" required><br><br>
+
+        <button type="submit">开始领取</button>
+    </form>
 </body>
 </html>
-
