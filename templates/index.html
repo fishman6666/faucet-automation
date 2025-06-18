@@ -1,21 +1,96 @@
 <!DOCTYPE html>
-<html lang="zh"><head><meta charset="UTF-8"><title>Faucet</title></head><body>
-<h2>SSE 实时领取</h2>
-<form id="f">
-  <textarea name="addresses" placeholder="地址，一行一个" rows="4"></textarea><br>
-  <textarea name="proxies" placeholder="host:port:user:pass 一行一个" rows="4"></textarea><br>
-  <input name="client_key" placeholder="YesCaptcha Key"><br>
-  <button>开始</button>
-</form>
-<pre id="log">等待提交...</pre>
-<script>
-const f = document.getElementById('f'), log = document.getElementById('log');
-f.addEventListener('submit', e => {
-  e.preventDefault(); log.textContent = "链接中...\n";
-  const qs = new URLSearchParams(new FormData(f)).toString();
-  const es = new EventSource('/run?' + qs);
-  es.onmessage = ev => { log.textContent += ev.data + "\n"; };
-  es.onerror = _=>{ log.textContent += "\n❌ 中断\n"; es.close(); };
-});
-</script>
-</body></html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>Camp Network 自动领水</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: #f0f2f5;
+    }
+    h1 {
+      color: #333;
+    }
+    textarea, input {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      margin-bottom: 15px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    button {
+      padding: 10px 20px;
+      background-color: #28a745;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #218838;
+    }
+    #output {
+      white-space: pre-wrap;
+      background: #fff;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Camp Faucet 批量自动领取工具</h1>
+
+  <label>钱包地址（每行一个）</label>
+  <textarea id="addresses" rows="6" placeholder="0x123..."></textarea>
+
+  <label>Socks5 代理列表（每行一个，如 IP:端口:用户名:密码）</label>
+  <textarea id="proxies" rows="6" placeholder="ip:port:user:pass"></textarea>
+
+  <label>YesCaptcha Client Key</label>
+  <input id="client_key" type="text" placeholder="你的 YesCaptcha Key">
+
+  <button onclick="start()">开始领取</button>
+
+  <h2>输出结果：</h2>
+  <div id="output">等待开始...</div>
+
+  <script>
+    function start() {
+      const addresses = document.getElementById("addresses").value.trim();
+      const proxies = document.getElementById("proxies").value.trim();
+      const clientKey = document.getElementById("client_key").value.trim();
+
+      if (!addresses || !proxies || !clientKey) {
+        alert("请填写所有字段！");
+        return;
+      }
+
+      const params = new URLSearchParams({
+        addresses: addresses,
+        proxies: proxies,
+        client_key: clientKey
+      });
+
+      const output = document.getElementById("output");
+      output.textContent = "⏳ 正在领取中...\n";
+
+      const evtSource = new EventSource("/run?" + params.toString());
+
+      evtSource.onmessage = function (event) {
+        output.textContent += event.data + "\n";
+        output.scrollTop = output.scrollHeight;
+      };
+
+      evtSource.onerror = function () {
+        output.textContent += "\n❌ 流连接中断或出错。\n";
+        evtSource.close();
+      };
+    }
+  </script>
+</body>
+</html>
