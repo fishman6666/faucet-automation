@@ -1,4 +1,4 @@
 flask
-httpx[socks]
+httpx[socks]==0.23.3
 gunicorn
 gevent
