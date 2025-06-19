@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>批量自动领取</title>
+  <title>批量自动领取工具</title>
   <style>
     body { background: #1a1a1a; color: #e5ffe5; font-family: "Consolas", "Menlo", monospace; padding: 32px; }
     h2 { color: #93ff6f; }
@@ -17,6 +17,9 @@
     .section-title { font-weight:bold; color:#ffe066; font-size: 17px; margin: 16px 0 4px 0;}
     .copy-btn { background: #ffe066; color: #111; margin-left: 8px; border-radius: 4px; padding: 6px 14px; font-size:14px; cursor:pointer;}
     .copy-btn:active { background: #ccbe57; }
+    .count-label { color:#6cff70; margin-bottom:5px; font-size: 14px; }
+    .count-label span { color: #ffe066; }
+    .count-warn { color: #ff5e5e; font-weight:bold; margin-left:10px;}
   </style>
 </head>
 <body>
@@ -24,8 +27,12 @@
   <form id="mainForm" autocomplete="off">
     <label>钱包地址（每行一个）:</label><br>
     <textarea id="addresses" rows="5" placeholder="0x..."></textarea><br>
+    <div id="addresses_count" class="count-label"></div>
+
     <label>代理列表（ip:port:user:pass[:SOCKS5]）:</label><br>
     <textarea id="proxies" rows="5" placeholder="ip:端口:账号:密码 或 ip:端口:账号:密码:SOCKS5"></textarea><br>
+    <div id="proxies_count" class="count-label"></div>
+
     <label>YesCaptcha API Key:</label><br>
     <input id="clientKey" placeholder="API Key"><br>
     <button type="submit">开始领取</button>
@@ -34,6 +41,23 @@
   </form>
   <div id="output"></div>
   <script>
+    // 实时统计总数+唯一数
+    function updateCounts() {
+      const a = document.getElementById("addresses").value.trim().split('\n').filter(l=>l.trim());
+      const aUnique = [...new Set(a)];
+      const p = document.getElementById("proxies").value.trim().split('\n').filter(l=>l.trim());
+      const pUnique = [...new Set(p)];
+      let warnA = a.length !== aUnique.length ? `<span class="count-warn">有重复</span>` : '';
+      let warnP = p.length !== pUnique.length ? `<span class="count-warn">有重复</span>` : '';
+      document.getElementById("addresses_count").innerHTML =
+        `地址数量：<span>${a.length}</span>，唯一：<span>${aUnique.length}</span> ${warnA}`;
+      document.getElementById("proxies_count").innerHTML =
+        `代理数量：<span>${p.length}</span>，唯一：<span>${pUnique.length}</span> ${warnP}`;
+    }
+    document.getElementById("addresses").addEventListener('input', updateCounts);
+    document.getElementById("proxies").addEventListener('input', updateCounts);
+    updateCounts();
+
     const output = document.getElementById("output");
     let evtSource = null;
 
@@ -70,7 +94,6 @@
       output.innerHTML = "查询中...\n";
       let resp = await fetch('/results');
       let text = await resp.text();
-      // 分段显示
       let succ = [], fail = [];
       text.split('\n').forEach(line => {
         if (line.startsWith("🎉")) succ.push(line);
