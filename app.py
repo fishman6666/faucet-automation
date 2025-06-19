@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, Response, send_file
+from flask import Flask, request, render_template, Response
 from concurrent.futures import ThreadPoolExecutor
 import time
 import httpx
@@ -14,11 +14,12 @@ app = Flask(__name__)
 def index():
     return render_template("index.html")
 
-@app.route('/run')
+@app.route('/run', methods=['POST'])
 def run():
-    addresses_raw = request.args.get('addresses', '')
-    proxies_raw = request.args.get('proxies', '')
-    client_key = request.args.get('client_key', '').strip()
+    data = request.get_json(force=True)
+    addresses_raw = data.get('addresses', '')
+    proxies_raw = data.get('proxies', '')
+    client_key = data.get('client_key', '').strip()
 
     addresses = [a.strip() for a in addresses_raw.strip().split('\n') if a.strip()]
     proxies = [p.strip() for p in proxies_raw.strip().split('\n') if p.strip()]
@@ -45,7 +46,6 @@ def run():
             # 保存结果到文件（每次任务都追加一行）
             with open("results.txt", "a", encoding="utf-8") as f:
                 for r in results:
-                    # 按行拆分，找到以“🎉”或“❌”开头的最终状态那行才写入
                     for line in r.strip().split('\n'):
                         if line.startswith("🎉") or line.startswith("❌"):
                             f.write(line + "\n")
@@ -53,7 +53,6 @@ def run():
 
         threading.Thread(target=task_worker, daemon=True).start()
 
-        last_heartbeat = time.time()
         while True:
             try:
                 result = q.get(timeout=5)
@@ -61,11 +60,9 @@ def run():
                     break
                 yield f"data: {result}\n\n"
             except Empty:
-                # 5秒心跳，防断流
                 yield f"data: [心跳] {time.strftime('%H:%M:%S')}\n\n"
 
     return Response(event_stream(), mimetype='text/event-stream')
-
 
 @app.route('/results')
 def results():
@@ -90,7 +87,6 @@ def results():
 
     resp = "\n".join(success + list(fail_dict.values()))
     return resp
-
 
 def parse_proxy_line(proxy_line):
     try:
@@ -181,7 +177,6 @@ def process_one(i, address, proxy_line, client_key):
     claim_result = claim_water(address, solution, user_agent, proxy_url)
     steps.append(f"[领水] 返回: {claim_result}")
 
-    # 判断是否领取成功
     if isinstance(claim_result, str) and '"msg":"Txhash:' in claim_result.replace(" ", ""):
         try:
             obj = json.loads(claim_result)
