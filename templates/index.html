@@ -2,67 +2,63 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>批量领取</title>
+  <title>批量自动领取</title>
   <style>
-    body { font-family: monospace; background: #111; color: #0f0; padding: 20px; }
-    textarea, input { width: 100%; margin-top: 10px; }
-    #output { white-space: pre-wrap; margin-top: 20px; max-height: 380px; overflow-y: auto; background: #161616; border-radius: 6px; padding: 12px; }
-    .txhash { color: #fffa65; font-weight: bold; }
-    .error { color: #ff6666; }
-    .heartbeat { color: #555; font-size: 13px; }
+    body { background: #1a1a1a; color: #e5ffe5; font-family: "Consolas", "Menlo", monospace; padding: 32px; }
+    h2 { color: #93ff6f; }
+    textarea, input { width: 100%; margin-top: 10px; background: #222; color: #8ffe8f; border: 1px solid #444; border-radius: 4px; padding: 8px; font-size: 15px; }
+    button { background: #59dd75; color: #111; border: none; border-radius: 4px; padding: 10px 32px; margin-top: 16px; font-weight: bold; cursor: pointer; }
+    button:active { background: #338744; }
+    #output { white-space: pre-wrap; margin-top: 28px; background: #181818; border: 1px solid #2a2a2a; border-radius: 8px; min-height: 200px; padding: 14px; font-size: 15px; }
+    .txhash { color: #ffe066; font-weight: bold; }
+    .fail { color: #ff5e5e; }
+    .heartbeat { color: #27bbff; }
+    .success { color: #6cff70; }
   </style>
 </head>
 <body>
-  <h2>批量领取工具</h2>
-  <form id="mainForm">
+  <h2>批量自动领取工具</h2>
+  <form id="mainForm" autocomplete="off">
     <label>钱包地址（每行一个）:</label><br>
-    <textarea id="addresses" rows="5"></textarea><br>
-    <label>代理列表（ip:port:user:pass 或 ip:port:user:pass:SOCKS5）:</label><br>
-    <textarea id="proxies" rows="5"></textarea><br>
+    <textarea id="addresses" rows="5" placeholder="0x..."></textarea><br>
+    <label>代理列表（ip:port:user:pass[:SOCKS5]）:</label><br>
+    <textarea id="proxies" rows="5" placeholder="ip:端口:账号:密码 或 ip:端口:账号:密码:SOCKS5"></textarea><br>
     <label>YesCaptcha API Key:</label><br>
-    <input id="clientKey"><br>
+    <input id="clientKey" placeholder="API Key"><br>
     <button type="submit">开始领取</button>
   </form>
   <div id="output"></div>
   <script>
-    function highlight(line) {
-      if (line.includes('Txhash')) {
-        return '<span class="txhash">' + line + '</span>';
-      }
-      if (line.startsWith('❌')) {
-        return '<span class="error">' + line + '</span>';
-      }
-      if (line.startsWith('[心跳]')) {
-        return '<span class="heartbeat">' + line + '</span>';
-      }
-      return line;
+    const output = document.getElementById("output");
+    let evtSource = null;
+
+    function addLine(line) {
+      // 彩色高亮处理
+      line = line
+        .replace(/领取成功！Txhash: <span class='txhash'>([^<]+)<\/span>/g,
+            "<span class='success'>🎉 领取成功！Txhash: <span class='txhash'>$1</span></span>")
+        .replace(/^❌.*失败.*/gm, txt => `<span class='fail'>${txt}</span>`)
+        .replace(/^\[心跳\].*/gm, txt => `<span class='heartbeat'>${txt}</span>`);
+      output.innerHTML += line + "\n";
+      output.scrollTop = output.scrollHeight; // 自动滚动到底部
     }
+
     document.getElementById("mainForm").onsubmit = function(e) {
       e.preventDefault();
+      if (evtSource) evtSource.close();
+      output.innerHTML = "开始连接...\n";
       const addresses = document.getElementById("addresses").value;
       const proxies = document.getElementById("proxies").value;
       const clientKey = document.getElementById("clientKey").value;
-      const output = document.getElementById("output");
-      output.innerHTML = "开始连接...<br>";
-
       const params = new URLSearchParams({ addresses, proxies, client_key: clientKey });
-      const evtSource = new EventSource(`/run?${params.toString()}`);
+      evtSource = new EventSource(`/run?${params.toString()}`);
 
       evtSource.onmessage = function(e) {
-        // 分行高亮处理
-        const lines = e.data.split('\n');
-        for (let line of lines) {
-          if (line.trim().length === 0) continue;
-          output.innerHTML += highlight(line) + "<br>";
-        }
-        // 自动滚动到底部
-        output.scrollTop = output.scrollHeight;
+        addLine(e.data);
       };
-
       evtSource.onerror = function(e) {
-        output.innerHTML += '<span class="error">❌ 流连接中断或出错。</span><br>';
-        evtSource.close();
-        output.scrollTop = output.scrollHeight;
+        addLine("❌ 流连接中断或出错。");
+        evtSource && evtSource.close();
       };
     }
   </script>
