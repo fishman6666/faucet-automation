@@ -7,7 +7,7 @@
     body { font-family: monospace; background: #111; color: #0f0; padding: 20px; }
     textarea, input { width: 100%; margin-top: 10px; background: #222; color: #0f0; border: 1px solid #555; padding: 5px; }
     button { margin-top: 10px; padding: 8px; background: #0f0; color: #000; font-weight: bold; cursor: pointer; }
-    #output { white-space: pre-wrap; margin-top: 20px; background: #000; padding: 10px; border: 1px solid #0f0; }
+    #output { white-space: pre-wrap; margin-top: 20px; background: #000; padding: 10px; border: 1px solid #0f0; max-height: 400px; overflow-y: auto;}
   </style>
 </head>
 <body>
@@ -23,12 +23,12 @@
   </form>
   <div id="output"></div>
   <script>
+    const output = document.getElementById("output");
     document.getElementById("mainForm").onsubmit = function(e) {
       e.preventDefault();
       const addresses = document.getElementById("addresses").value;
       const proxies = document.getElementById("proxies").value;
       const clientKey = document.getElementById("clientKey").value;
-      const output = document.getElementById("output");
       output.textContent = "开始连接...\n";
 
       const params = new URLSearchParams({ addresses, proxies, client_key: clientKey });
@@ -36,11 +36,17 @@
 
       evtSource.onmessage = function(e) {
         output.textContent += e.data + "\n";
+        // 日志也输出到控制台调试
+        console.log("onmessage:", e.data);
+        // 自动滚动到底部
+        output.scrollTop = output.scrollHeight;
       };
 
-      evtSource.onerror = function() {
+      evtSource.onerror = function(e) {
         output.textContent += "❌ 流连接中断或出错。\n";
+        console.log("onerror:", e);
         evtSource.close();
+        output.scrollTop = output.scrollHeight;
       };
     };
   </script>
