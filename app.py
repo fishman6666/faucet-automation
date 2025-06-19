@@ -2,7 +2,6 @@ from flask import Flask, request, render_template, Response
 from concurrent.futures import ThreadPoolExecutor
 import time
 import httpx
-import json
 
 app = Flask(__name__)
 
@@ -27,15 +26,14 @@ def run():
     def event_stream():
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = [executor.submit(process_one, i, address, proxies[i], client_key) for i, address in enumerate(addresses)]
-            for future in futures:
+            for i, future in enumerate(futures):
                 try:
-                    result = future.result()
+                    result = future.result(timeout=180)
                 except Exception as e:
-                    result = f"❌ 服务端异常：{str(e)}"
+                    result = f"❌ [{i+1}] 任务异常中断：{str(e)}"
                 yield f"data: {result}\n\n"
 
     return Response(event_stream(), mimetype='text/event-stream')
-
 
 def parse_proxy_line(proxy_line):
     try:
@@ -44,9 +42,8 @@ def parse_proxy_line(proxy_line):
             host, port, user, pwd = parts
             return f"socks5://{user}:{pwd}@{host}:{port}"
         return None
-    except Exception as e:
+    except Exception:
         return None
-
 
 def create_yescaptcha_task(client_key, user_agent):
     payload = {
@@ -61,18 +58,16 @@ def create_yescaptcha_task(client_key, user_agent):
     try:
         r = httpx.post("https://api.yescaptcha.com/createTask", json=payload, timeout=60)
         r.raise_for_status()
-        task_id = r.json().get("taskId")
-        return task_id, r.json()
+        return r.json().get("taskId"), r.json()
     except Exception as e:
         return None, {"error": str(e)}
-
 
 def get_yescaptcha_result(client_key, task_id, timeout=120):
     start = time.time()
     while time.time() - start < timeout:
         try:
-            resp = httpx.post("https://api.yescaptcha.com/getTaskResult", json={"clientKey": client_key, "taskId": task_id}, timeout=60)
-            result = resp.json()
+            r = httpx.post("https://api.yescaptcha.com/getTaskResult", json={"clientKey": client_key, "taskId": task_id}, timeout=60)
+            result = r.json()
             if result.get("status") == "ready":
                 return result['solution']['gRecaptchaResponse'], None
         except Exception as e:
@@ -80,9 +75,7 @@ def get_yescaptcha_result(client_key, task_id, timeout=120):
         time.sleep(3)
     return None, "打码超时"
 
-
 def claim_water(address, hcaptcha_response, user_agent, proxy_url):
-    url = "https://faucet-go-production.up.railway.app/api/claim"
     headers = {
         "h-captcha-response": hcaptcha_response,
         "user-agent": user_agent,
@@ -91,11 +84,10 @@ def claim_water(address, hcaptcha_response, user_agent, proxy_url):
     payload = {"address": address}
     try:
         with httpx.Client(proxies=proxy_url, timeout=60) as client:
-            resp = client.post(url, headers=headers, json=payload)
+            resp = client.post("https://faucet-go-production.up.railway.app/api/claim", headers=headers, json=payload)
             return resp.text
     except Exception as e:
         return f"请求失败: {e}"
-
 
 def process_one(i, address, proxy_line, client_key):
     proxy_url = parse_proxy_line(proxy_line)
@@ -118,4 +110,4 @@ def process_one(i, address, proxy_line, client_key):
     return msg + f"✅ [{i+1}] {address} 完成领取\n{result}\n"
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000, debug=True)
+    app.run(host='0.0.0.0', port=10000)
