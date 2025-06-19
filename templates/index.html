@@ -2,22 +2,23 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>批量领取</title>
+  <title>批量领取工具</title>
   <style>
     body { font-family: monospace; background: #111; color: #0f0; padding: 20px; }
-    textarea, input { width: 100%; margin-top: 10px; }
-    #output { white-space: pre-wrap; margin-top: 20px; }
+    textarea, input { width: 100%; margin-top: 10px; background: #222; color: #0f0; border: 1px solid #555; padding: 5px; }
+    button { margin-top: 10px; padding: 8px; background: #0f0; color: #000; font-weight: bold; cursor: pointer; }
+    #output { white-space: pre-wrap; margin-top: 20px; background: #000; padding: 10px; border: 1px solid #0f0; }
   </style>
 </head>
 <body>
   <h2>批量领取工具</h2>
   <form id="mainForm">
-    <label>钱包地址（每行一个）:</label><br>
-    <textarea id="addresses" rows="5"></textarea><br>
-    <label>代理列表（格式：ip:port:user:pass，每行一个）:</label><br>
-    <textarea id="proxies" rows="5"></textarea><br>
-    <label>YesCaptcha API Key:</label><br>
-    <input id="clientKey"><br>
+    <label>钱包地址（每行一个）:</label>
+    <textarea id="addresses" rows="5"></textarea>
+    <label>代理列表（ip:port:user:pass）:</label>
+    <textarea id="proxies" rows="5"></textarea>
+    <label>YesCaptcha API Key:</label>
+    <input id="clientKey">
     <button type="submit">开始领取</button>
   </form>
   <div id="output"></div>
@@ -41,7 +42,7 @@
         output.textContent += "❌ 流连接中断或出错。\n";
         evtSource.close();
       };
-    }
+    };
   </script>
 </body>
 </html>
