@@ -4,6 +4,8 @@ import time
 import httpx
 import threading
 from queue import Queue, Empty
+import json
+import re
 
 app = Flask(__name__)
 
@@ -131,8 +133,24 @@ def process_one(i, address, proxy_line, client_key):
     if not solution:
         return yield_msg + f"❌ 打码失败: {err}\n"
 
-    result = claim_water(address, solution, user_agent, proxy_url)
-    return yield_msg + f"✅ [{i+1}] {address} 完成领取\n{result}\n"
+    claim_result = claim_water(address, solution, user_agent, proxy_url)
+    final_msg = yield_msg + f"领取返回: {claim_result}\n"
+
+    # 判断是否领取成功
+    if isinstance(claim_result, str) and '"msg":"Txhash:' in claim_result.replace(" ", ""):
+        # 提取Txhash
+        try:
+            obj = json.loads(claim_result)
+            tx = obj["msg"].split("Txhash:")[-1]
+        except Exception:
+            m = re.search(r'Txhash[:：]([0-9a-fA-Fx]+)', claim_result)
+            tx = m.group(1) if m else ""
+        final_msg += f"🎉 领取成功！Txhash: <span class='txhash'>{tx}</span>\n"
+    else:
+        # 失败的情况
+        fail_reason = claim_result.strip()
+        final_msg += f"❌ 领取失败！原因：{fail_reason}\n"
+    return final_msg
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000, debug=True)
