@@ -1,8 +1,11 @@
 from flask import Flask, request, render_template, Response
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 import time
 import httpx
+import threading
+from queue import Queue, Empty
 import json
+import re
 
 app = Flask(__name__)
 
@@ -10,11 +13,12 @@ app = Flask(__name__)
 def index():
     return render_template("index.html")
 
-@app.route('/run', methods=["POST"])
+@app.route('/run')
 def run():
-    addresses_raw = request.form.get('addresses', '')
-    proxies_raw = request.form.get('proxies', '')
-    client_key = request.form.get('client_key', '').strip()
+    addresses_raw = request.args.get('addresses', '')
+    proxies_raw = request.args.get('proxies', '')
+    client_key = request.args.get('client_key', '').strip()
+
     addresses = [a.strip() for a in addresses_raw.strip().split('\n') if a.strip()]
     proxies = [p.strip() for p in proxies_raw.strip().split('\n') if p.strip()]
 
@@ -24,39 +28,47 @@ def run():
         return "❌ 地址数量与代理数量不一致", 400
 
     def event_stream():
-        yield f"data: 开始连接...\n\n"
-        # 心跳包每2秒
-        def heart():
-            while not done[0]:
-                now = time.strftime('%H:%M:%S')
-                yield f"data: [心跳] {now}\n\n"
-                time.sleep(2)
-        from threading import Thread
-        done = [False]
-        heart_thread = Thread(target=lambda: [yield_ for yield_ in heart()])
-        heart_thread.daemon = True
-        heart_thread.start()
+        q = Queue()
 
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [executor.submit(process_one, i, address, proxies[i], client_key) for i, address in enumerate(addresses)]
-            for future in as_completed(futures):
-                result = future.result()
+        def task_worker():
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = [executor.submit(process_one, i, address, proxies[i], client_key) for i, address in enumerate(addresses)]
+                for future in futures:
+                    try:
+                        result = future.result()
+                    except Exception as e:
+                        result = f"❌ 后台异常: {e}"
+                    q.put(result)
+            q.put(None)  # 标记结束
+
+        threading.Thread(target=task_worker, daemon=True).start()
+
+        while True:
+            try:
+                result = q.get(timeout=1.5)
+                if result is None:
+                    break
                 yield f"data: {result}\n\n"
-        done[0] = True
+            except Empty:
+                # 定时心跳包，防断流
+                yield f"data: [心跳] {time.strftime('%H:%M:%S')}\n\n"
 
     return Response(event_stream(), mimetype='text/event-stream')
 
 
 def parse_proxy_line(proxy_line):
-    # 忽略结尾 :SOCKS5
-    proxy_line = proxy_line.strip()
-    if proxy_line.upper().endswith(':SOCKS5'):
-        proxy_line = proxy_line[:-7]
-    parts = proxy_line.split(":")
-    if len(parts) == 4:
-        host, port, user, pwd = parts
+    try:
+        parts = proxy_line.strip().split(":")
+        # 支持带 :SOCKS5 结尾的格式
+        if len(parts) == 5 and parts[-1].upper() == "SOCKS5":
+            host, port, user, pwd, _ = parts
+        elif len(parts) == 4:
+            host, port, user, pwd = parts
+        else:
+            return None
         return f"socks5://{user}:{pwd}@{host}:{port}"
-    return None
+    except Exception:
+        return None
 
 def create_yescaptcha_task(client_key, user_agent):
     payload = {
@@ -107,31 +119,38 @@ def claim_water(address, hcaptcha_response, user_agent, proxy_url):
 def process_one(i, address, proxy_line, client_key):
     proxy_url = parse_proxy_line(proxy_line)
     user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
-    out = [f"🕐 [{i+1}] 使用代理：{proxy_url or '❌ 代理格式错误'}"]
+
+    yield_msg = f"🕐 [{i+1}] 使用代理：{proxy_url or '❌ 代理格式错误'}\n"
+
     if not proxy_url:
-        return "\n".join(out + ["❌ 无效代理格式，跳过"])
+        return yield_msg + "❌ 无效代理格式，跳过\n"
+
     task_id, result = create_yescaptcha_task(client_key, user_agent)
-    out.append(f"打码任务ID: {task_id} 结果: {result}")
     if not task_id:
-        return "\n".join(out + [f"❌ 打码任务创建失败: {result}"])
+        return yield_msg + f"❌ 打码任务创建失败: {result}\n"
+
     solution, err = get_yescaptcha_result(client_key, task_id)
-    out.append(f"打码结果: {solution} 错误: {err}")
     if not solution:
-        return "\n".join(out + [f"❌ 打码失败: {err}"])
+        return yield_msg + f"❌ 打码失败: {err}\n"
+
     claim_result = claim_water(address, solution, user_agent, proxy_url)
-    # 提示txhash
-    try:
-        if isinstance(claim_result, str) and claim_result.startswith("{"):
-            jr = json.loads(claim_result)
-            if "msg" in jr and "Txhash" in jr["msg"]:
-                out.append(f"✅ 领取成功: {jr['msg']}")
-            else:
-                out.append(f"❌ 领取失败: {jr.get('msg', claim_result)}")
-        else:
-            out.append(f"❌ 领取异常: {claim_result}")
-    except Exception as e:
-        out.append(f"❌ 领取异常: {claim_result}")
-    return "\n".join(out)
+    final_msg = yield_msg + f"领取返回: {claim_result}\n"
+
+    # 判断是否领取成功
+    if isinstance(claim_result, str) and '"msg":"Txhash:' in claim_result.replace(" ", ""):
+        # 提取Txhash
+        try:
+            obj = json.loads(claim_result)
+            tx = obj["msg"].split("Txhash:")[-1]
+        except Exception:
+            m = re.search(r'Txhash[:：]([0-9a-fA-Fx]+)', claim_result)
+            tx = m.group(1) if m else ""
+        final_msg += f"🎉 领取成功！Txhash: <span class='txhash'>{tx}</span>\n"
+    else:
+        # 失败的情况
+        fail_reason = claim_result.strip()
+        final_msg += f"❌ 领取失败！原因：{fail_reason}\n"
+    return final_msg
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000, debug=True)
