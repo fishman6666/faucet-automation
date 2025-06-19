@@ -9,11 +9,14 @@
     textarea, input { width: 100%; margin-top: 10px; background: #222; color: #8ffe8f; border: 1px solid #444; border-radius: 4px; padding: 8px; font-size: 15px; }
     button { background: #59dd75; color: #111; border: none; border-radius: 4px; padding: 10px 32px; margin-top: 16px; font-weight: bold; cursor: pointer; }
     button:active { background: #338744; }
-    #succ, #fail { white-space: pre-wrap; background: #181818; border: 1px solid #2a2a2a; border-radius: 8px; min-height: 80px; padding: 10px; font-size: 15px; margin-top: 16px; }
+    #output { white-space: pre-wrap; margin-top: 28px; background: #181818; border: 1px solid #2a2a2a; border-radius: 8px; min-height: 200px; padding: 14px; font-size: 15px; }
     .txhash { color: #ffe066; font-weight: bold; }
     .fail { color: #ff5e5e; }
+    .heartbeat { color: #27bbff; }
     .success { color: #6cff70; }
-    .copy-btn { background: #27bbff; color: #111; border-radius: 4px; border: none; font-size: 14px; margin-left: 8px; padding: 7px 14px; cursor: pointer;}
+    .section-title { font-weight:bold; color:#ffe066; font-size: 17px; margin: 16px 0 4px 0;}
+    .copy-btn { background: #ffe066; color: #111; margin-left: 8px; border-radius: 4px; padding: 6px 14px; font-size:14px; cursor:pointer;}
+    .copy-btn:active { background: #ccbe57; }
   </style>
 </head>
 <body>
@@ -26,77 +29,70 @@
     <label>YesCaptcha API Key:</label><br>
     <input id="clientKey" placeholder="API Key"><br>
     <button type="submit">开始领取</button>
-    <button type="button" id="historyBtn" style="margin-left:18px;background:#27bbff;color:#111;">查询历史结果</button>
+    <button type="button" id="btn-query">查询历史结果</button>
+    <button type="button" class="copy-btn" id="btn-copy-fail">复制失败地址</button>
   </form>
-
-  <div>
-    <div><b>领取成功：</b></div>
-    <div id="succ"></div>
-    <div style="margin-top:8px;"><b>失败钱包（可复制重试）：</b>
-      <button type="button" class="copy-btn" onclick="copyFail()">复制失败钱包</button>
-    </div>
-    <div id="fail"></div>
-  </div>
-
+  <div id="output"></div>
   <script>
+    const output = document.getElementById("output");
     let evtSource = null;
-    const succDiv = document.getElementById("succ");
-    const failDiv = document.getElementById("fail");
 
-    function showResult(list) {
-      succDiv.innerHTML = "";
-      failDiv.innerHTML = "";
-      let failAddrs = [];
-      list.forEach(line => {
-        if(line.includes("领取成功")) {
-          succDiv.innerHTML += line.replace(/领取成功！Txhash: <span class='txhash'>([^<]+)<\/span>/g,
-            "<span class='success'>🎉 领取成功！Txhash: <span class='txhash'>$1</span></span>") + "\n";
-        } else if(line.startsWith("❌")) {
-          failDiv.innerHTML += `<span class="fail">${line}</span>\n`;
-          const m = line.match(/^(?:❌ )?(0x[a-fA-F0-9]{40})/);
-          if(m) failAddrs.push(m[1]);
-        }
-      });
-      failDiv.setAttribute("data-fails", failAddrs.join("\n"));
-    }
-
-    function copyFail() {
-      const txt = failDiv.getAttribute("data-fails") || "";
-      if(txt) {
-        navigator.clipboard.writeText(txt);
-        alert("已复制失败钱包地址！");
-      } else {
-        alert("没有可复制的失败钱包地址。");
-      }
+    function addLine(line) {
+      line = line
+        .replace(/领取成功！Txhash: <span class='txhash'>([^<]+)<\/span>/g,
+            "<span class='success'>🎉 领取成功！Txhash: <span class='txhash'>$1</span></span>")
+        .replace(/^❌.*失败.*/gm, txt => `<span class='fail'>${txt}</span>`)
+        .replace(/^\[心跳\].*/gm, txt => `<span class='heartbeat'>${txt}</span>`);
+      output.innerHTML += line + "\n";
+      output.scrollTop = output.scrollHeight;
     }
 
     document.getElementById("mainForm").onsubmit = function(e) {
       e.preventDefault();
       if (evtSource) evtSource.close();
-      succDiv.innerHTML = "开始连接...\n"; failDiv.innerHTML = "";
+      output.innerHTML = "开始连接...\n";
       const addresses = document.getElementById("addresses").value;
       const proxies = document.getElementById("proxies").value;
       const clientKey = document.getElementById("clientKey").value;
       const params = new URLSearchParams({ addresses, proxies, client_key: clientKey });
-      let results = [];
       evtSource = new EventSource(`/run?${params.toString()}`);
 
       evtSource.onmessage = function(e) {
-        const line = e.data.trim();
-        if (!line) return;
-        results.push(line);
-        showResult(results);
+        addLine(e.data);
       };
-      evtSource.onerror = function(e) { evtSource && evtSource.close(); };
+      evtSource.onerror = function(e) {
+        evtSource && evtSource.close();
+      };
     }
 
-    document.getElementById("historyBtn").onclick = function() {
-      if (evtSource) evtSource.close();
-      succDiv.innerHTML = "查询历史领取结果中...\n"; failDiv.innerHTML = "";
-      fetch("/results")
-        .then(resp => resp.json())
-        .then(list => showResult(list))
-        .catch(() => {succDiv.innerHTML = "查询失败！";});
+    // 查询历史唯一失败/成功
+    document.getElementById("btn-query").onclick = async function() {
+      output.innerHTML = "查询中...\n";
+      let resp = await fetch('/results');
+      let text = await resp.text();
+      // 分段显示
+      let succ = [], fail = [];
+      text.split('\n').forEach(line => {
+        if (line.startsWith("🎉")) succ.push(line);
+        if (line.startsWith("❌")) fail.push(line);
+      });
+      output.innerHTML = `<div class='section-title'>🎉 成功</div>${succ.join('<br>') || '无'}<br>
+                          <div class='section-title'>❌ 失败（唯一）</div>${fail.join('<br>') || '无'}`;
+      output.scrollTop = output.scrollHeight;
+      window.lastFailLines = fail.map(line=>{
+        let m = line.match(/❌ (\w{42})/); return m ? m[1] : null;
+      }).filter(x=>x).join("\n");
+    };
+
+    // 一键复制失败地址
+    document.getElementById("btn-copy-fail").onclick = function() {
+      if (!window.lastFailLines) {
+        alert("请先点击【查询历史结果】再复制唯一失败地址！");
+        return;
+      }
+      navigator.clipboard.writeText(window.lastFailLines).then(()=>{
+        alert("唯一失败地址已复制！");
+      });
     };
   </script>
 </body>
