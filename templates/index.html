@@ -26,6 +26,7 @@
     <label>YesCaptcha API Key:</label><br>
     <input id="clientKey" placeholder="API Key"><br>
     <button type="submit">开始领取</button>
+    <button type="button" id="historyBtn" style="margin-left:18px;background:#27bbff;color:#111;">查询历史结果</button>
   </form>
   <div id="output"></div>
   <script>
@@ -57,10 +58,26 @@
         addLine(e.data);
       };
       evtSource.onerror = function(e) {
-        // 连接结束，无需统一提示，静默关闭即可
         evtSource && evtSource.close();
       };
     }
+
+    document.getElementById("historyBtn").onclick = function() {
+      if (evtSource) evtSource.close();
+      output.innerHTML = "查询历史领取结果中...\n";
+      fetch("/results")
+        .then(resp => resp.json())
+        .then(list => {
+          if (!list.length) {
+            output.innerHTML = "暂无历史记录。\n";
+            return;
+          }
+          // 重新彩色处理
+          output.innerHTML = "";
+          list.forEach(item => addLine(item));
+        })
+        .catch(() => output.innerHTML = "查询失败！");
+    };
   </script>
 </body>
 </html>
