@@ -2,57 +2,82 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>批量领取</title>
+  <title>批量领取自动化</title>
   <style>
-    body { font-family: monospace; background: #111; color: #0f0; padding: 20px; }
-    textarea, input { width: 100%; margin-top: 10px; }
-    #output { white-space: pre-wrap; margin-top: 20px; }
+    body { 
+      font-family: monospace, 'Consolas', 'Courier New', monospace;
+      background: #181818; color: #0f0; padding: 24px 10vw;
+    }
+    textarea, input {
+      width: 100%; background: #222; color: #0f0; border: 1px solid #333;
+      margin-top: 10px; font-size: 16px; border-radius: 5px; padding: 6px;
+    }
+    label { color: #0f0; }
+    button {
+      background: #111; color: #0f0; border: 1px solid #393;
+      margin-top: 15px; padding: 7px 30px; border-radius: 6px;
+      font-size: 16px; cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover { background: #222; }
+    #output {
+      white-space: pre-wrap;
+      background: #111; color: #0f0; margin-top: 25px;
+      border: 1px solid #333; border-radius: 6px; padding: 14px;
+      height: 38vh; overflow-y: auto; font-size: 15px;
+      box-shadow: 0 0 12px #0f03;
+    }
+    h2 { color: #0f0; letter-spacing: 2px;}
   </style>
 </head>
 <body>
-  <h2>批量领取工具</h2>
+  <h2>批量领取自动化工具</h2>
   <form id="mainForm">
     <label>钱包地址（每行一个）:</label><br>
-    <textarea id="addresses" rows="5"></textarea><br>
+    <textarea id="addresses" rows="5" required></textarea><br>
     <label>代理列表（ip:port:user:pass）:</label><br>
-    <textarea id="proxies" rows="5"></textarea><br>
+    <textarea id="proxies" rows="5" required></textarea><br>
     <label>YesCaptcha API Key:</label><br>
-    <input id="clientKey"><br>
+    <input id="clientKey" required><br>
     <button type="submit">开始领取</button>
   </form>
   <div id="output"></div>
   <script>
+    const output = document.getElementById("output");
+    function scrollToBottom() { output.scrollTop = output.scrollHeight; }
+
     document.getElementById("mainForm").onsubmit = function(e) {
       e.preventDefault();
+      output.textContent = "开始连接...\n";
       const addresses = document.getElementById("addresses").value;
       const proxies = document.getElementById("proxies").value;
       const clientKey = document.getElementById("clientKey").value;
-      const output = document.getElementById("output");
-      output.textContent = "开始连接...\n";
+      const params = new URLSearchParams({ addresses, proxies, client_key: clientKey });
+      const evtSource = new EventSource(`/run?${params.toString()}`);
 
-      // 用POST发FormData
-      const formData = new FormData();
-      formData.append("addresses", addresses);
-      formData.append("proxies", proxies);
-      formData.append("client_key", clientKey);
-
-      const evtSource = new EventSourcePolyfill('/run-evt?' + new URLSearchParams({
-        addresses, proxies, client_key: clientKey
-      }).toString(), {withCredentials:false});
-
-      // 如果服务端支持POST SSE，可以用 fetch+ReadableStream; 否则polyfill fallback GET
       evtSource.onmessage = function(e) {
+        // 实时显示流输出
         output.textContent += e.data + "\n";
-        if (e.data.includes("领取成功")) {
-          output.textContent += "🎉 领取完成！\n";
+        scrollToBottom();
+
+        // 自动高亮 Txhash
+        if (e.data.includes("Txhash:")) {
+          output.innerHTML = output.innerHTML.replace(/(Txhash: [a-zA-Z0-9]+)/g, '<span style="color:#0ff;font-weight:bold;">$1</span>');
+          scrollToBottom();
         }
       };
+
       evtSource.onerror = function(e) {
-        output.textContent += "❌ 流连接中断或出错。\n";
+        // 只在没有“Txhash”结果时才提示错误
+        if (!output.textContent.match(/Txhash:/)) {
+          output.textContent += "❌ 流连接中断或出错。\n";
+        } else {
+          output.textContent += "✅ 已领取成功，连接结束！\n";
+        }
+        scrollToBottom();
         evtSource.close();
       };
-    }
+    };
   </script>
-  <!-- 如果服务端没做POST SSE Polyfill, 可删掉 Polyfill 用原生EventSource并用GET（或根据你实际后端GET/POST策略切换） -->
 </body>
 </html>
