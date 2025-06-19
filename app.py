@@ -42,7 +42,8 @@ def parse_proxy_line(proxy_line):
             host, port, user, pwd = parts
             return f"socks5://{user}:{pwd}@{host}:{port}"
         return None
-    except Exception:
+    except Exception as e:
+        print(f"代理解析异常: {e}")
         return None
 
 def create_yescaptcha_task(client_key, user_agent):
@@ -60,6 +61,7 @@ def create_yescaptcha_task(client_key, user_agent):
         r.raise_for_status()
         return r.json().get("taskId"), r.json()
     except Exception as e:
+        print(f"创建打码任务异常: {e}")
         return None, {"error": str(e)}
 
 def get_yescaptcha_result(client_key, task_id, timeout=120):
@@ -71,11 +73,14 @@ def get_yescaptcha_result(client_key, task_id, timeout=120):
             if result.get("status") == "ready":
                 return result['solution']['gRecaptchaResponse'], None
         except Exception as e:
+            print(f"打码结果获取异常: {e}")
             return None, str(e)
         time.sleep(3)
+    print("打码超时")
     return None, "打码超时"
 
 def claim_water(address, hcaptcha_response, user_agent, proxy_url):
+    url = "https://faucet-go-production.up.railway.app/api/claim"
     headers = {
         "h-captcha-response": hcaptcha_response,
         "user-agent": user_agent,
@@ -84,29 +89,39 @@ def claim_water(address, hcaptcha_response, user_agent, proxy_url):
     payload = {"address": address}
     try:
         with httpx.Client(proxies=proxy_url, timeout=60) as client:
-            resp = client.post("https://faucet-go-production.up.railway.app/api/claim", headers=headers, json=payload)
+            resp = client.post(url, headers=headers, json=payload)
             return resp.text
     except Exception as e:
+        print(f"领取异常: {e}")
         return f"请求失败: {e}"
 
 def process_one(i, address, proxy_line, client_key):
+    print(f"[{i+1}] 开始领取，使用代理原始：{proxy_line}")
     proxy_url = parse_proxy_line(proxy_line)
+    print(f"[{i+1}] 解析后代理：{proxy_url}")
     user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
 
     if not proxy_url:
+        print(f"[{i+1}] 代理格式错误")
         return f"🕐 [{i+1}] 使用代理：❌ 代理格式错误\n❌ 跳过此任务\n"
 
     msg = f"🕐 [{i+1}] 使用代理：{proxy_url}\n"
 
+    # 打码
     task_id, result = create_yescaptcha_task(client_key, user_agent)
+    print(f"[{i+1}] 打码任务ID: {task_id} 结果: {result}")
     if not task_id:
+        print(f"[{i+1}] 打码任务创建失败: {result}")
         return msg + f"❌ 打码任务创建失败: {result}\n"
 
     solution, err = get_yescaptcha_result(client_key, task_id)
+    print(f"[{i+1}] 打码结果: {solution} 错误: {err}")
     if not solution:
+        print(f"[{i+1}] 打码失败: {err}")
         return msg + f"❌ 打码失败: {err}\n"
 
     result = claim_water(address, solution, user_agent, proxy_url)
+    print(f"[{i+1}] 领取返回: {result}")
     return msg + f"✅ [{i+1}] {address} 完成领取\n{result}\n"
 
 if __name__ == '__main__':
