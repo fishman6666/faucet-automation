@@ -73,16 +73,21 @@ def results():
         lines = []
     success = []
     fail_dict = {}
+    success_addr = set()  # 新增：保存成功地址
 
     for line in lines:
         line = line.strip()
-        if line.startswith("🎉"):
+        m1 = re.match(r"🎉 (\w{42}) ", line)
+        if m1:
+            addr = m1.group(1)
             success.append(line)
-        elif line.startswith("❌"):
-            m = re.search(r"❌ (\w{42}) 失败，可重试：(.*)", line)
-            if m:
-                addr = m.group(1)
-                reason = m.group(2)
+            success_addr.add(addr)
+        m2 = re.match(r"❌ (\w{42}) 失败，可重试：(.*)", line)
+        if m2:
+            addr = m2.group(1)
+            reason = m2.group(2)
+            # 只保留没有成功过的地址
+            if addr not in success_addr:
                 fail_dict[addr] = f"❌ {addr} 失败，可重试：{reason}"
 
     resp = "\n".join(success + list(fail_dict.values()))
