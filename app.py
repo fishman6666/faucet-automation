@@ -9,7 +9,18 @@ import re
 import os
 
 app = Flask(__name__)
-HISTORY_FILE = "results.log"
+
+HISTORY_FILE = "results.txt"
+
+def save_history(line):
+    with open(HISTORY_FILE, "a", encoding="utf-8") as f:
+        f.write(line.replace('\n', ' ') + "\n")
+
+def read_history():
+    if not os.path.exists(HISTORY_FILE):
+        return []
+    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+        return [line.strip() for line in f if line.strip()]
 
 @app.route('/')
 def index():
@@ -20,10 +31,8 @@ def run():
     addresses_raw = request.args.get('addresses', '')
     proxies_raw = request.args.get('proxies', '')
     client_key = request.args.get('client_key', '').strip()
-
     addresses = [a.strip() for a in addresses_raw.strip().split('\n') if a.strip()]
     proxies = [p.strip() for p in proxies_raw.strip().split('\n') if p.strip()]
-
     if not (addresses and proxies and client_key):
         return "❌ 参数缺失，请确保地址、代理和 clientKey 都填写", 400
     if len(addresses) != len(proxies):
@@ -31,7 +40,6 @@ def run():
 
     def event_stream():
         q = Queue()
-
         def task_worker():
             with ThreadPoolExecutor(max_workers=10) as executor:
                 futures = [executor.submit(process_one, i, address, proxies[i], client_key) for i, address in enumerate(addresses)]
@@ -41,10 +49,9 @@ def run():
                     except Exception as e:
                         result = f"❌ 后台异常: {e}"
                     q.put(result)
-            q.put(None)  # 标记结束
-
+            q.put(None)
         threading.Thread(target=task_worker, daemon=True).start()
-
+        last_heartbeat = time.time()
         while True:
             try:
                 result = q.get(timeout=5)
@@ -52,18 +59,13 @@ def run():
                     break
                 yield f"data: {result}\n\n"
             except Empty:
+                # 心跳包每5秒
                 yield f"data: [心跳] {time.strftime('%H:%M:%S')}\n\n"
-
     return Response(event_stream(), mimetype='text/event-stream')
 
-@app.route('/results')
-def results():
-    if not os.path.exists(HISTORY_FILE):
-        return jsonify([])
-    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-        lines = f.readlines()
-    # 直接以字符串数组返回，前端直接输出
-    return jsonify([line.strip() for line in lines if line.strip()])
+@app.route("/results")
+def get_results():
+    return jsonify(read_history())
 
 def parse_proxy_line(proxy_line):
     try:
@@ -127,61 +129,39 @@ def claim_water(address, hcaptcha_response, user_agent, proxy_url):
 def process_one(i, address, proxy_line, client_key):
     proxy_url = parse_proxy_line(proxy_line)
     user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
-    steps = []
-
-    steps.append(f"🕐 [{i+1}] 使用代理：{proxy_url or '❌ 代理格式错误'}")
     if not proxy_url:
-        steps.append("❌ 无效代理格式，跳过")
-        result_str = "\n".join(steps)
-        save_history(result_str)
-        return result_str
+        fail = f"❌ {address} 代理格式错误"
+        save_history(fail)
+        return fail
 
-    steps.append("⏳ [打码] 开始创建任务")
     task_id, result = create_yescaptcha_task(client_key, user_agent)
-    steps.append(f"[打码] 任务ID: {task_id}, 原始返回: {result}")
-
     if not task_id:
-        steps.append(f"❌ 打码任务创建失败: {result}")
-        result_str = "\n".join(steps)
-        save_history(result_str)
-        return result_str
+        fail = f"❌ {address} 打码失败"
+        save_history(fail)
+        return fail
 
-    steps.append("⏳ [打码] 等待打码结果")
     solution, err = get_yescaptcha_result(client_key, task_id)
-    steps.append(f"[打码] 结果: {solution}, 错误: {err}")
-
     if not solution:
-        steps.append(f"❌ 打码失败: {err}")
-        result_str = "\n".join(steps)
-        save_history(result_str)
-        return result_str
+        fail = f"❌ {address} 打码无解: {err}"
+        save_history(fail)
+        return fail
 
-    steps.append("⏳ [领水] 准备请求 faucet")
     claim_result = claim_water(address, solution, user_agent, proxy_url)
-    steps.append(f"[领水] 返回: {claim_result}")
-
     # 判断是否领取成功
     if isinstance(claim_result, str) and '"msg":"Txhash:' in claim_result.replace(" ", ""):
         try:
             obj = json.loads(claim_result)
-            tx = obj["msg"].split("Txhash:")[-1]
+            tx = obj["msg"].split("Txhash:")[-1].strip()
         except Exception:
             m = re.search(r'Txhash[:：]([0-9a-fA-Fx]+)', claim_result)
             tx = m.group(1) if m else ""
-        steps.append(f"🎉 领取成功！Txhash: <span class='txhash'>{tx}</span>")
+        succ = f"🎉 {address} 领取成功！Txhash: <span class='txhash'>{tx}</span>"
+        save_history(succ)
+        return succ
     else:
-        fail_reason = claim_result.strip()
-        steps.append(f"❌ 领取失败！原因：{fail_reason}")
-
-    result_str = "\n".join(steps)
-    save_history(result_str)
-    for s in steps:
-        print(f"[{i+1}] {s}")
-    return result_str
-
-def save_history(text):
-    with open(HISTORY_FILE, "a", encoding="utf-8") as f:
-        f.write(text + "\n----\n")
+        fail = f"❌ {address} 失败，可重试：{claim_result}"
+        save_history(fail)
+        return fail
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000, debug=True)
