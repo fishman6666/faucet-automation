@@ -14,6 +14,7 @@
     .fail { color: #ff5e5e; }
     .heartbeat { color: #27bbff; }
     .success { color: #6cff70; }
+    .uniq { color: #93ff6f; margin-bottom: 6px;}
   </style>
 </head>
 <body>
@@ -21,12 +22,10 @@
   <form id="mainForm" autocomplete="off">
     <label>钱包地址（每行一个）:</label><br>
     <textarea id="addresses" rows="5" placeholder="0x..."></textarea><br>
-    <div id="addresses_count" style="color:#6cff70; margin-bottom:5px"></div>
-
+    <div id="addresses_count" class="uniq"></div>
     <label>代理列表（ip:port:user:pass[:SOCKS5]）:</label><br>
     <textarea id="proxies" rows="5" placeholder="ip:端口:账号:密码 或 ip:端口:账号:密码:SOCKS5"></textarea><br>
-    <div id="proxies_count" style="color:#6cff70; margin-bottom:5px"></div>
-
+    <div id="proxies_count" class="uniq"></div>
     <label>YesCaptcha API Key:</label><br>
     <input id="clientKey" placeholder="API Key"><br>
     <button type="submit">开始领取</button>
@@ -35,10 +34,13 @@
   <script>
     // 行数统计
     function updateCounts() {
-      const a = document.getElementById("addresses").value.trim().split('\n').filter(l=>l.trim());
-      const p = document.getElementById("proxies").value.trim().split('\n').filter(l=>l.trim());
-      document.getElementById("addresses_count").innerText = `地址数量：${a.length}`;
-      document.getElementById("proxies_count").innerText = `代理数量：${p.length}`;
+      const a_lines = document.getElementById("addresses").value.trim().split('\n').map(x=>x.trim()).filter(Boolean);
+      const p_lines = document.getElementById("proxies").value.trim().split('\n').map(x=>x.trim()).filter(Boolean);
+      // 唯一去重统计
+      const a_uniq = Array.from(new Set(a_lines));
+      const p_uniq = Array.from(new Set(p_lines));
+      document.getElementById("addresses_count").innerText = `地址数量：${a_lines.length}，唯一：${a_uniq.length}`;
+      document.getElementById("proxies_count").innerText = `代理数量：${p_lines.length}，唯一：${p_uniq.length}`;
     }
     document.getElementById("addresses").addEventListener('input', updateCounts);
     document.getElementById("proxies").addEventListener('input', updateCounts);
@@ -48,14 +50,13 @@
     let evtSource = null;
 
     function addLine(line) {
-      // 彩色高亮处理
       line = line
         .replace(/领取成功！Txhash: <span class='txhash'>([^<]+)<\/span>/g,
             "<span class='success'>🎉 领取成功！Txhash: <span class='txhash'>$1</span></span>")
         .replace(/^❌.*失败.*/gm, txt => `<span class='fail'>${txt}</span>`)
         .replace(/^\[心跳\].*/gm, txt => `<span class='heartbeat'>${txt}</span>`);
       output.innerHTML += line + "\n";
-      output.scrollTop = output.scrollHeight; // 自动滚动到底部
+      output.scrollTop = output.scrollHeight;
     }
 
     document.getElementById("mainForm").onsubmit = function(e) {
