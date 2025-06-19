@@ -45,12 +45,11 @@ def run():
 
         while True:
             try:
-                result = q.get(timeout=1.5)
+                result = q.get(timeout=5)  # 心跳间隔改为5秒
                 if result is None:
                     break
                 yield f"data: {result}\n\n"
             except Empty:
-                # 定时心跳包，防断流
                 yield f"data: [心跳] {time.strftime('%H:%M:%S')}\n\n"
 
     return Response(event_stream(), mimetype='text/event-stream')
