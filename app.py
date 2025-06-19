@@ -45,7 +45,7 @@ def run():
 
         while True:
             try:
-                result = q.get(timeout=5)  # 心跳间隔改为5秒
+                result = q.get(timeout=5)   # 心跳5秒
                 if result is None:
                     break
                 yield f"data: {result}\n\n"
@@ -53,7 +53,6 @@ def run():
                 yield f"data: [心跳] {time.strftime('%H:%M:%S')}\n\n"
 
     return Response(event_stream(), mimetype='text/event-stream')
-
 
 def parse_proxy_line(proxy_line):
     try:
@@ -118,22 +117,35 @@ def claim_water(address, hcaptcha_response, user_agent, proxy_url):
 def process_one(i, address, proxy_line, client_key):
     proxy_url = parse_proxy_line(proxy_line)
     user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+    steps = []
 
-    yield_msg = f"🕐 [{i+1}] 使用代理：{proxy_url or '❌ 代理格式错误'}\n"
-
+    steps.append(f"🕐 [{i+1}] 使用代理：{proxy_url or '❌ 代理格式错误'}")
     if not proxy_url:
-        return yield_msg + "❌ 无效代理格式，跳过\n"
+        steps.append("❌ 无效代理格式，跳过")
+        _print_steps(i, steps)
+        return "\n".join(steps)
 
+    steps.append("⏳ [打码] 开始创建任务")
     task_id, result = create_yescaptcha_task(client_key, user_agent)
+    steps.append(f"[打码] 任务ID: {task_id}, 原始返回: {result}")
+
     if not task_id:
-        return yield_msg + f"❌ 打码任务创建失败: {result}\n"
+        steps.append(f"❌ 打码任务创建失败: {result}")
+        _print_steps(i, steps)
+        return "\n".join(steps)
 
+    steps.append("⏳ [打码] 等待打码结果")
     solution, err = get_yescaptcha_result(client_key, task_id)
-    if not solution:
-        return yield_msg + f"❌ 打码失败: {err}\n"
+    steps.append(f"[打码] 结果: {solution}, 错误: {err}")
 
+    if not solution:
+        steps.append(f"❌ 打码失败: {err}")
+        _print_steps(i, steps)
+        return "\n".join(steps)
+
+    steps.append("⏳ [领水] 准备请求 faucet")
     claim_result = claim_water(address, solution, user_agent, proxy_url)
-    final_msg = yield_msg + f"领取返回: {claim_result}\n"
+    steps.append(f"[领水] 返回: {claim_result}")
 
     # 判断是否领取成功
     if isinstance(claim_result, str) and '"msg":"Txhash:' in claim_result.replace(" ", ""):
@@ -144,12 +156,17 @@ def process_one(i, address, proxy_line, client_key):
         except Exception:
             m = re.search(r'Txhash[:：]([0-9a-fA-Fx]+)', claim_result)
             tx = m.group(1) if m else ""
-        final_msg += f"🎉 领取成功！Txhash: <span class='txhash'>{tx}</span>\n"
+        steps.append(f"🎉 领取成功！Txhash: <span class='txhash'>{tx}</span>")
     else:
-        # 失败的情况
         fail_reason = claim_result.strip()
-        final_msg += f"❌ 领取失败！原因：{fail_reason}\n"
-    return final_msg
+        steps.append(f"❌ 领取失败！原因：{fail_reason}")
+
+    _print_steps(i, steps)
+    return "\n".join(steps)
+
+def _print_steps(i, steps):
+    for s in steps:
+        print(f"[{i+1}] {s}")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000, debug=True)
