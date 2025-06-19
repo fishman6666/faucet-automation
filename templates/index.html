@@ -6,12 +6,7 @@
   <style>
     body { font-family: monospace; background: #111; color: #0f0; padding: 20px; }
     textarea, input { width: 100%; margin-top: 10px; }
-    #output { white-space: pre-wrap; margin-top: 20px; background: #222; border-radius: 8px; padding: 10px; min-height: 120px;}
-    .success { color: #0f0; }
-    .fail { color: #f44; }
-    .txhash { color: #1ed760; text-decoration: underline; }
-    .address { color: #c2e; }
-    .proxy { color: #5af; }
+    #output { white-space: pre-wrap; margin-top: 20px; }
   </style>
 </head>
 <body>
@@ -24,45 +19,40 @@
     <label>YesCaptcha API Key:</label><br>
     <input id="clientKey"><br>
     <button type="submit">开始领取</button>
-    <button type="button" id="queryHistory" style="margin-top: 10px;">刷新结果</button>
   </form>
   <div id="output"></div>
   <script>
-    function renderResults(results) {
-      let html = '';
-      for (const row of results) {
-        html +=
-          `<div>
-            <span class="address">${row.address}</span>
-            <span class="proxy"> [${row.proxy}]</span>
-            <span class="${row.success ? 'success' : 'fail'}">${row.msg}</span>
-            ${row.txhash ? `<span class="txhash">Txhash: <a href="https://testnet.bscscan.com/tx/${row.txhash}" target="_blank">${row.txhash}</a></span>` : ''}
-          </div>\n`;
-      }
-      document.getElementById("output").innerHTML = html;
-    }
-
     document.getElementById("mainForm").onsubmit = function(e) {
       e.preventDefault();
       const addresses = document.getElementById("addresses").value;
       const proxies = document.getElementById("proxies").value;
       const clientKey = document.getElementById("clientKey").value;
-      document.getElementById("output").textContent = "领取中，请稍候...\n";
-      fetch('/run', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: new URLSearchParams({ addresses, proxies, client_key: clientKey })
-      })
-      .then(r => r.json())
-      .then(res => renderResults(res.results))
-      .catch(err => { document.getElementById("output").textContent = "❌ 提交失败 " + err; });
-    };
+      const output = document.getElementById("output");
+      output.textContent = "开始连接...\n";
 
-    document.getElementById("queryHistory").onclick = function() {
-      fetch('/history')
-      .then(r => r.json())
-      .then(res => renderResults(res.results));
-    };
+      // 用POST发FormData
+      const formData = new FormData();
+      formData.append("addresses", addresses);
+      formData.append("proxies", proxies);
+      formData.append("client_key", clientKey);
+
+      const evtSource = new EventSourcePolyfill('/run-evt?' + new URLSearchParams({
+        addresses, proxies, client_key: clientKey
+      }).toString(), {withCredentials:false});
+
+      // 如果服务端支持POST SSE，可以用 fetch+ReadableStream; 否则polyfill fallback GET
+      evtSource.onmessage = function(e) {
+        output.textContent += e.data + "\n";
+        if (e.data.includes("领取成功")) {
+          output.textContent += "🎉 领取完成！\n";
+        }
+      };
+      evtSource.onerror = function(e) {
+        output.textContent += "❌ 流连接中断或出错。\n";
+        evtSource.close();
+      };
+    }
   </script>
+  <!-- 如果服务端没做POST SSE Polyfill, 可删掉 Polyfill 用原生EventSource并用GET（或根据你实际后端GET/POST策略切换） -->
 </body>
 </html>
