@@ -2,53 +2,69 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>批量领取工具</title>
+  <title>批量领取</title>
   <style>
     body { font-family: monospace; background: #111; color: #0f0; padding: 20px; }
-    textarea, input { width: 100%; margin-top: 10px; background: #222; color: #0f0; border: 1px solid #555; padding: 5px; }
-    button { margin-top: 10px; padding: 8px; background: #0f0; color: #000; font-weight: bold; cursor: pointer; }
-    #output { white-space: pre-wrap; margin-top: 20px; background: #000; padding: 10px; border: 1px solid #0f0; max-height: 400px; overflow-y: auto;}
+    textarea, input { width: 100%; margin-top: 10px; }
+    #output { white-space: pre-wrap; margin-top: 20px; max-height: 380px; overflow-y: auto; background: #161616; border-radius: 6px; padding: 12px; }
+    .txhash { color: #fffa65; font-weight: bold; }
+    .error { color: #ff6666; }
+    .heartbeat { color: #555; font-size: 13px; }
   </style>
 </head>
 <body>
   <h2>批量领取工具</h2>
   <form id="mainForm">
-    <label>钱包地址（每行一个）:</label>
-    <textarea id="addresses" rows="5"></textarea>
-    <label>代理列表（ip:port:user:pass）:</label>
-    <textarea id="proxies" rows="5"></textarea>
-    <label>YesCaptcha API Key:</label>
-    <input id="clientKey">
+    <label>钱包地址（每行一个）:</label><br>
+    <textarea id="addresses" rows="5"></textarea><br>
+    <label>代理列表（ip:port:user:pass 或 ip:port:user:pass:SOCKS5）:</label><br>
+    <textarea id="proxies" rows="5"></textarea><br>
+    <label>YesCaptcha API Key:</label><br>
+    <input id="clientKey"><br>
     <button type="submit">开始领取</button>
   </form>
   <div id="output"></div>
   <script>
-    const output = document.getElementById("output");
+    function highlight(line) {
+      if (line.includes('Txhash')) {
+        return '<span class="txhash">' + line + '</span>';
+      }
+      if (line.startsWith('❌')) {
+        return '<span class="error">' + line + '</span>';
+      }
+      if (line.startsWith('[心跳]')) {
+        return '<span class="heartbeat">' + line + '</span>';
+      }
+      return line;
+    }
     document.getElementById("mainForm").onsubmit = function(e) {
       e.preventDefault();
       const addresses = document.getElementById("addresses").value;
       const proxies = document.getElementById("proxies").value;
       const clientKey = document.getElementById("clientKey").value;
-      output.textContent = "开始连接...\n";
+      const output = document.getElementById("output");
+      output.innerHTML = "开始连接...<br>";
 
       const params = new URLSearchParams({ addresses, proxies, client_key: clientKey });
       const evtSource = new EventSource(`/run?${params.toString()}`);
 
       evtSource.onmessage = function(e) {
-        output.textContent += e.data + "\n";
-        // 日志也输出到控制台调试
-        console.log("onmessage:", e.data);
+        // 分行高亮处理
+        const lines = e.data.split('\n');
+        for (let line of lines) {
+          if (line.trim().length === 0) continue;
+          output.innerHTML += highlight(line) + "<br>";
+        }
         // 自动滚动到底部
         output.scrollTop = output.scrollHeight;
       };
 
       evtSource.onerror = function(e) {
-        output.textContent += "❌ 流连接中断或出错。\n";
-        console.log("onerror:", e);
+        output.innerHTML += '<span class="error">❌ 流连接中断或出错。</span><br>';
         evtSource.close();
         output.scrollTop = output.scrollHeight;
       };
-    };
+    }
   </script>
 </body>
 </html>
