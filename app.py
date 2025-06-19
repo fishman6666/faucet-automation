@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, Response
+from flask import Flask, request, render_template, Response, jsonify
 from concurrent.futures import ThreadPoolExecutor
 import time
 import httpx
@@ -6,8 +6,10 @@ import threading
 from queue import Queue, Empty
 import json
 import re
+import os
 
 app = Flask(__name__)
+HISTORY_FILE = "results.log"
 
 @app.route('/')
 def index():
@@ -45,7 +47,7 @@ def run():
 
         while True:
             try:
-                result = q.get(timeout=5)   # 心跳5秒
+                result = q.get(timeout=5)
                 if result is None:
                     break
                 yield f"data: {result}\n\n"
@@ -54,10 +56,18 @@ def run():
 
     return Response(event_stream(), mimetype='text/event-stream')
 
+@app.route('/results')
+def results():
+    if not os.path.exists(HISTORY_FILE):
+        return jsonify([])
+    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    # 直接以字符串数组返回，前端直接输出
+    return jsonify([line.strip() for line in lines if line.strip()])
+
 def parse_proxy_line(proxy_line):
     try:
         parts = proxy_line.strip().split(":")
-        # 支持带 :SOCKS5 结尾的格式
         if len(parts) == 5 and parts[-1].upper() == "SOCKS5":
             host, port, user, pwd, _ = parts
         elif len(parts) == 4:
@@ -122,8 +132,9 @@ def process_one(i, address, proxy_line, client_key):
     steps.append(f"🕐 [{i+1}] 使用代理：{proxy_url or '❌ 代理格式错误'}")
     if not proxy_url:
         steps.append("❌ 无效代理格式，跳过")
-        _print_steps(i, steps)
-        return "\n".join(steps)
+        result_str = "\n".join(steps)
+        save_history(result_str)
+        return result_str
 
     steps.append("⏳ [打码] 开始创建任务")
     task_id, result = create_yescaptcha_task(client_key, user_agent)
@@ -131,8 +142,9 @@ def process_one(i, address, proxy_line, client_key):
 
     if not task_id:
         steps.append(f"❌ 打码任务创建失败: {result}")
-        _print_steps(i, steps)
-        return "\n".join(steps)
+        result_str = "\n".join(steps)
+        save_history(result_str)
+        return result_str
 
     steps.append("⏳ [打码] 等待打码结果")
     solution, err = get_yescaptcha_result(client_key, task_id)
@@ -140,8 +152,9 @@ def process_one(i, address, proxy_line, client_key):
 
     if not solution:
         steps.append(f"❌ 打码失败: {err}")
-        _print_steps(i, steps)
-        return "\n".join(steps)
+        result_str = "\n".join(steps)
+        save_history(result_str)
+        return result_str
 
     steps.append("⏳ [领水] 准备请求 faucet")
     claim_result = claim_water(address, solution, user_agent, proxy_url)
@@ -149,7 +162,6 @@ def process_one(i, address, proxy_line, client_key):
 
     # 判断是否领取成功
     if isinstance(claim_result, str) and '"msg":"Txhash:' in claim_result.replace(" ", ""):
-        # 提取Txhash
         try:
             obj = json.loads(claim_result)
             tx = obj["msg"].split("Txhash:")[-1]
@@ -161,12 +173,15 @@ def process_one(i, address, proxy_line, client_key):
         fail_reason = claim_result.strip()
         steps.append(f"❌ 领取失败！原因：{fail_reason}")
 
-    _print_steps(i, steps)
-    return "\n".join(steps)
-
-def _print_steps(i, steps):
+    result_str = "\n".join(steps)
+    save_history(result_str)
     for s in steps:
         print(f"[{i+1}] {s}")
+    return result_str
+
+def save_history(text):
+    with open(HISTORY_FILE, "a", encoding="utf-8") as f:
+        f.write(text + "\n----\n")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000, debug=True)
