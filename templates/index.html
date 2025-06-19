@@ -75,6 +75,8 @@
       document.getElementById("mainForm").onsubmit = async function(e) {
         e.preventDefault();
         output.innerHTML = "开始连接...\n";
+        window.lastFailLines = ""; // 新增：每次领取清空唯一失败列表
+
         const addresses = document.getElementById("addresses").value;
         const proxies = document.getElementById("proxies").value;
         const clientKey = document.getElementById("clientKey").value;
