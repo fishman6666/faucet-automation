@@ -31,6 +31,7 @@
   <script>
     const output = document.getElementById("output");
     let evtSource = null;
+    let gotSuccess = false;
 
     function addLine(line) {
       // 彩色高亮处理
@@ -47,6 +48,7 @@
       e.preventDefault();
       if (evtSource) evtSource.close();
       output.innerHTML = "开始连接...\n";
+      gotSuccess = false;
       const addresses = document.getElementById("addresses").value;
       const proxies = document.getElementById("proxies").value;
       const clientKey = document.getElementById("clientKey").value;
@@ -55,9 +57,16 @@
 
       evtSource.onmessage = function(e) {
         addLine(e.data);
+        if (e.data.includes("领取成功！Txhash")) {
+          gotSuccess = true;
+        }
       };
       evtSource.onerror = function(e) {
-        addLine("❌ 流连接中断或出错。");
+        if (gotSuccess) {
+          addLine("🎉 全部领取完成！");
+        } else {
+          addLine("❌ 全部领取失败或未成功。");
+        }
         evtSource && evtSource.close();
       };
     }
