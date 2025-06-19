@@ -59,7 +59,6 @@
     updateCounts();
 
     const output = document.getElementById("output");
-    let evtSource = null;
 
     function addLine(line) {
       line = line
@@ -71,22 +70,36 @@
       output.scrollTop = output.scrollHeight;
     }
 
-    document.getElementById("mainForm").onsubmit = function(e) {
+    // 使用POST+流式方式，不再用EventSource
+    document.getElementById("mainForm").onsubmit = async function(e) {
       e.preventDefault();
-      if (evtSource) evtSource.close();
       output.innerHTML = "开始连接...\n";
       const addresses = document.getElementById("addresses").value;
       const proxies = document.getElementById("proxies").value;
       const clientKey = document.getElementById("clientKey").value;
-      const params = new URLSearchParams({ addresses, proxies, client_key: clientKey });
-      evtSource = new EventSource(`/run?${params.toString()}`);
-
-      evtSource.onmessage = function(e) {
-        addLine(e.data);
-      };
-      evtSource.onerror = function(e) {
-        evtSource && evtSource.close();
-      };
+      const res = await fetch("/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ addresses, proxies, client_key: clientKey })
+      });
+      if (!res.body) {
+        output.innerHTML += "❌ 请求失败！";
+        return;
+      }
+      const reader = res.body.getReader();
+      let partial = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        let chunk = new TextDecoder().decode(value);
+        partial += chunk;
+        let lines = partial.split('\n\n');
+        partial = lines.pop();
+        lines.forEach(line => {
+          const match = /^data:\s*(.*)/.exec(line);
+          if (match) addLine(match[1]);
+        });
+      }
     }
 
     // 查询历史唯一失败/成功
