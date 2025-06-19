@@ -51,7 +51,7 @@ def run():
                 yield f"data: {result}\n\n"
             except Empty:
                 # 定时心跳包，防断流
-                yield f"data: [心跳] {time.strftime('%H:%M:%S')}\n\n"
+                yield f"data: [检测] {time.strftime('%H:%M:%S')}\n\n"
 
     return Response(event_stream(), mimetype='text/event-stream')
 
