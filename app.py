@@ -2,7 +2,8 @@ from flask import Flask, request, render_template, Response
 from concurrent.futures import ThreadPoolExecutor
 import time
 import httpx
-import json
+import threading
+from queue import Queue, Empty
 
 app = Flask(__name__)
 
@@ -25,21 +26,40 @@ def run():
         return "❌ 地址数量与代理数量不一致", 400
 
     def event_stream():
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [executor.submit(process_one, i, address, proxies[i], client_key) for i, address in enumerate(addresses)]
-            for future in futures:
-                result = future.result()
+        q = Queue()
+
+        def task_worker():
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = [executor.submit(process_one, i, address, proxies[i], client_key) for i, address in enumerate(addresses)]
+                for future in futures:
+                    try:
+                        result = future.result()
+                    except Exception as e:
+                        result = f"❌ 后台异常: {e}"
+                    q.put(result)
+            q.put(None)  # 标记结束
+
+        threading.Thread(target=task_worker, daemon=True).start()
+
+        while True:
+            try:
+                result = q.get(timeout=1.5)
+                if result is None:
+                    break
                 yield f"data: {result}\n\n"
+            except Empty:
+                # 定时心跳包，防断流
+                yield f"data: [心跳] {time.strftime('%H:%M:%S')}\n\n"
 
     return Response(event_stream(), mimetype='text/event-stream')
 
 
 def parse_proxy_line(proxy_line):
     try:
-        # 支持结尾多一个 “:SOCKS5” 或 “:socks5”
         parts = proxy_line.strip().split(":")
-        if len(parts) == 5 and parts[-1].lower() == "socks5":
-            host, port, user, pwd = parts[:4]
+        # 支持带 :SOCKS5 结尾的格式
+        if len(parts) == 5 and parts[-1].upper() == "SOCKS5":
+            host, port, user, pwd, _ = parts
         elif len(parts) == 4:
             host, port, user, pwd = parts
         else:
@@ -47,7 +67,6 @@ def parse_proxy_line(proxy_line):
         return f"socks5://{user}:{pwd}@{host}:{port}"
     except Exception:
         return None
-
 
 def create_yescaptcha_task(client_key, user_agent):
     payload = {
@@ -67,7 +86,6 @@ def create_yescaptcha_task(client_key, user_agent):
     except Exception as e:
         return None, {"error": str(e)}
 
-
 def get_yescaptcha_result(client_key, task_id, timeout=120):
     start = time.time()
     while time.time() - start < timeout:
@@ -80,7 +98,6 @@ def get_yescaptcha_result(client_key, task_id, timeout=120):
             return None, str(e)
         time.sleep(3)
     return None, "打码超时"
-
 
 def claim_water(address, hcaptcha_response, user_agent, proxy_url):
     url = "https://faucet-go-production.up.railway.app/api/claim"
@@ -96,7 +113,6 @@ def claim_water(address, hcaptcha_response, user_agent, proxy_url):
             return resp.text
     except Exception as e:
         return f"请求失败: {e}"
-
 
 def process_one(i, address, proxy_line, client_key):
     proxy_url = parse_proxy_line(proxy_line)
