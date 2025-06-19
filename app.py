@@ -16,6 +16,9 @@ def index():
 
 @app.route('/run', methods=['POST'])
 def run():
+    # 每次开始领取，清空上次统计的结果文件
+    open("results.txt", "w").close()
+
     data = request.get_json(force=True)
     addresses_raw = data.get('addresses', '')
     proxies_raw = data.get('proxies', '')
