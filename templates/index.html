@@ -14,9 +14,6 @@
     .fail { color: #ff5e5e; }
     .heartbeat { color: #27bbff; }
     .success { color: #6cff70; }
-    .section-title { font-weight:bold; color:#ffe066; font-size: 17px; margin: 16px 0 4px 0;}
-    .copy-btn { background: #ffe066; color: #111; margin-left: 8px; border-radius: 4px; padding: 6px 14px; font-size:14px; cursor:pointer;}
-    .copy-btn:active { background: #ccbe57; }
   </style>
 </head>
 <body>
@@ -24,27 +21,41 @@
   <form id="mainForm" autocomplete="off">
     <label>钱包地址（每行一个）:</label><br>
     <textarea id="addresses" rows="5" placeholder="0x..."></textarea><br>
+    <div id="addresses_count" style="color:#6cff70; margin-bottom:5px"></div>
+
     <label>代理列表（ip:port:user:pass[:SOCKS5]）:</label><br>
     <textarea id="proxies" rows="5" placeholder="ip:端口:账号:密码 或 ip:端口:账号:密码:SOCKS5"></textarea><br>
+    <div id="proxies_count" style="color:#6cff70; margin-bottom:5px"></div>
+
     <label>YesCaptcha API Key:</label><br>
     <input id="clientKey" placeholder="API Key"><br>
     <button type="submit">开始领取</button>
-    <button type="button" id="btn-query">查询历史结果</button>
-    <button type="button" class="copy-btn" id="btn-copy-fail">复制失败地址</button>
   </form>
   <div id="output"></div>
   <script>
+    // 行数统计
+    function updateCounts() {
+      const a = document.getElementById("addresses").value.trim().split('\n').filter(l=>l.trim());
+      const p = document.getElementById("proxies").value.trim().split('\n').filter(l=>l.trim());
+      document.getElementById("addresses_count").innerText = `地址数量：${a.length}`;
+      document.getElementById("proxies_count").innerText = `代理数量：${p.length}`;
+    }
+    document.getElementById("addresses").addEventListener('input', updateCounts);
+    document.getElementById("proxies").addEventListener('input', updateCounts);
+    updateCounts();
+
     const output = document.getElementById("output");
     let evtSource = null;
 
     function addLine(line) {
+      // 彩色高亮处理
       line = line
         .replace(/领取成功！Txhash: <span class='txhash'>([^<]+)<\/span>/g,
             "<span class='success'>🎉 领取成功！Txhash: <span class='txhash'>$1</span></span>")
         .replace(/^❌.*失败.*/gm, txt => `<span class='fail'>${txt}</span>`)
         .replace(/^\[心跳\].*/gm, txt => `<span class='heartbeat'>${txt}</span>`);
       output.innerHTML += line + "\n";
-      output.scrollTop = output.scrollHeight;
+      output.scrollTop = output.scrollHeight; // 自动滚动到底部
     }
 
     document.getElementById("mainForm").onsubmit = function(e) {
@@ -64,36 +75,6 @@
         evtSource && evtSource.close();
       };
     }
-
-    // 查询历史唯一失败/成功
-    document.getElementById("btn-query").onclick = async function() {
-      output.innerHTML = "查询中...\n";
-      let resp = await fetch('/results');
-      let text = await resp.text();
-      // 分段显示
-      let succ = [], fail = [];
-      text.split('\n').forEach(line => {
-        if (line.startsWith("🎉")) succ.push(line);
-        if (line.startsWith("❌")) fail.push(line);
-      });
-      output.innerHTML = `<div class='section-title'>🎉 成功</div>${succ.join('<br>') || '无'}<br>
-                          <div class='section-title'>❌ 失败（唯一）</div>${fail.join('<br>') || '无'}`;
-      output.scrollTop = output.scrollHeight;
-      window.lastFailLines = fail.map(line=>{
-        let m = line.match(/❌ (\w{42})/); return m ? m[1] : null;
-      }).filter(x=>x).join("\n");
-    };
-
-    // 一键复制失败地址
-    document.getElementById("btn-copy-fail").onclick = function() {
-      if (!window.lastFailLines) {
-        alert("请先点击【查询历史结果】再复制唯一失败地址！");
-        return;
-      }
-      navigator.clipboard.writeText(window.lastFailLines).then(()=>{
-        alert("唯一失败地址已复制！");
-      });
-    };
   </script>
 </body>
 </html>
