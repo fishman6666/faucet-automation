@@ -1,5 +1,6 @@
 <script>
-  // 实时统计总数+唯一数
+document.addEventListener("DOMContentLoaded", function() {
+  // === 你的全部JS代码 ===
   function updateCounts() {
     const a = document.getElementById("addresses").value.trim().split('\n').filter(l=>l.trim());
     const aUnique = [...new Set(a)];
@@ -91,4 +92,5 @@
       alert("唯一失败地址已复制！");
     });
   };
+});
 </script>
