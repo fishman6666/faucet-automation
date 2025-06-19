@@ -2,65 +2,67 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>批量自动领取</title>
+  <title>批量领取</title>
   <style>
-    body { background: #1a1a1a; color: #e5ffe5; font-family: "Consolas", "Menlo", monospace; padding: 32px; }
-    h2 { color: #93ff6f; }
-    textarea, input { width: 100%; margin-top: 10px; background: #222; color: #8ffe8f; border: 1px solid #444; border-radius: 4px; padding: 8px; font-size: 15px; }
-    button { background: #59dd75; color: #111; border: none; border-radius: 4px; padding: 10px 32px; margin-top: 16px; font-weight: bold; cursor: pointer; }
-    button:active { background: #338744; }
-    #output { white-space: pre-wrap; margin-top: 28px; background: #181818; border: 1px solid #2a2a2a; border-radius: 8px; min-height: 200px; padding: 14px; font-size: 15px; }
-    .txhash { color: #ffe066; font-weight: bold; }
-    .fail { color: #ff5e5e; }
-    .heartbeat { color: #27bbff; }
-    .success { color: #6cff70; }
+    body { font-family: monospace; background: #111; color: #0f0; padding: 20px; }
+    textarea, input { width: 100%; margin-top: 10px; }
+    #output { white-space: pre-wrap; margin-top: 20px; background: #222; border-radius: 8px; padding: 10px; min-height: 120px;}
+    .success { color: #0f0; }
+    .fail { color: #f44; }
+    .txhash { color: #1ed760; text-decoration: underline; }
+    .address { color: #c2e; }
+    .proxy { color: #5af; }
   </style>
 </head>
 <body>
-  <h2>批量自动领取工具</h2>
-  <form id="mainForm" autocomplete="off">
+  <h2>批量领取工具</h2>
+  <form id="mainForm">
     <label>钱包地址（每行一个）:</label><br>
-    <textarea id="addresses" rows="5" placeholder="0x..."></textarea><br>
-    <label>代理列表（ip:port:user:pass[:SOCKS5]）:</label><br>
-    <textarea id="proxies" rows="5" placeholder="ip:端口:账号:密码 或 ip:端口:账号:密码:SOCKS5"></textarea><br>
+    <textarea id="addresses" rows="5"></textarea><br>
+    <label>代理列表（ip:port:user:pass）:</label><br>
+    <textarea id="proxies" rows="5"></textarea><br>
     <label>YesCaptcha API Key:</label><br>
-    <input id="clientKey" placeholder="API Key"><br>
+    <input id="clientKey"><br>
     <button type="submit">开始领取</button>
+    <button type="button" id="queryHistory" style="margin-top: 10px;">刷新结果</button>
   </form>
   <div id="output"></div>
   <script>
-    const output = document.getElementById("output");
-    let evtSource = null;
-
-    function addLine(line) {
-      // 彩色高亮处理
-      line = line
-        .replace(/领取成功！Txhash: <span class='txhash'>([^<]+)<\/span>/g,
-            "<span class='success'>🎉 领取成功！Txhash: <span class='txhash'>$1</span></span>")
-        .replace(/^❌.*失败.*/gm, txt => `<span class='fail'>${txt}</span>`)
-        .replace(/^\[心跳\].*/gm, txt => `<span class='heartbeat'>${txt}</span>`);
-      output.innerHTML += line + "\n";
-      output.scrollTop = output.scrollHeight; // 自动滚动到底部
+    function renderResults(results) {
+      let html = '';
+      for (const row of results) {
+        html +=
+          `<div>
+            <span class="address">${row.address}</span>
+            <span class="proxy"> [${row.proxy}]</span>
+            <span class="${row.success ? 'success' : 'fail'}">${row.msg}</span>
+            ${row.txhash ? `<span class="txhash">Txhash: <a href="https://testnet.bscscan.com/tx/${row.txhash}" target="_blank">${row.txhash}</a></span>` : ''}
+          </div>\n`;
+      }
+      document.getElementById("output").innerHTML = html;
     }
 
     document.getElementById("mainForm").onsubmit = function(e) {
       e.preventDefault();
-      if (evtSource) evtSource.close();
-      output.innerHTML = "开始连接...\n";
       const addresses = document.getElementById("addresses").value;
       const proxies = document.getElementById("proxies").value;
       const clientKey = document.getElementById("clientKey").value;
-      const params = new URLSearchParams({ addresses, proxies, client_key: clientKey });
-      evtSource = new EventSource(`/run?${params.toString()}`);
+      document.getElementById("output").textContent = "领取中，请稍候...\n";
+      fetch('/run', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({ addresses, proxies, client_key: clientKey })
+      })
+      .then(r => r.json())
+      .then(res => renderResults(res.results))
+      .catch(err => { document.getElementById("output").textContent = "❌ 提交失败 " + err; });
+    };
 
-      evtSource.onmessage = function(e) {
-        addLine(e.data);
-      };
-      evtSource.onerror = function(e) {
-        // 连接结束，无需统一提示，静默关闭即可
-        evtSource && evtSource.close();
-      };
-    }
+    document.getElementById("queryHistory").onclick = function() {
+      fetch('/history')
+      .then(r => r.json())
+      .then(res => renderResults(res.results));
+    };
   </script>
 </body>
 </html>
